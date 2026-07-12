@@ -4,7 +4,6 @@ services:
     env: docker
     dockerfilePath: deploy/Dockerfile
     dockerContext: .
-    healthCheckPath: /health
     envVars:
       - key: OPENCLAW_GATEWAY_TOKEN
         sync: false
@@ -20,7 +19,3 @@ services:
       name: openclaw-data
       mountPath: /data
       sizeGB: 1
-    regions:
-      - frankfurt
-    plan: starter
-    autoDeploy: true
