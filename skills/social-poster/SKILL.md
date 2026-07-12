@@ -1,7 +1,9 @@
 ---
 name: social-poster
-description: Post content to Facebook and generate reels using Pexels stock footage + FFmpeg
+description: Post content to Facebook, build reels with Pexels + FFmpeg, add TTS voiceover and music
 ---
+
+All API keys available: FACEBOOK_ACCESS_TOKEN, PEXELS_API_KEY, GEMINI_API_KEY
 
 ## Facebook Post
 
@@ -10,55 +12,57 @@ POST https://graph.facebook.com/v21.0/me/feed
 Params: access_token={FACEBOOK_ACCESS_TOKEN}, message=<content>
 ```
 
-## Reel Generation (9:16, no paid AI video API needed)
+## Reel Generation (9:16)
 
 ### 1. Search Pexels for stock clips
-
 ```
-GET https://api.pexels.com/videos/search?query=<keyword>&per_page=5&orientation=portrait
+GET https://api.pexels.com/videos/search?query=<keyword>&per_page=3&orientation=portrait
 Headers: Authorization: {PEXELS_API_KEY}
 ```
 
-Returns video files with `video_files` array. Pick the one with max `width` (highest quality).
+Pick HD video files from results. Download with `curl -o /tmp/clip1.mp4 <url>`.
 
-### 2. Download clips
-
-Use `curl -o /tmp/clip1.mp4 <video_link>` to download the HD or SD video file URL.
-
-### 3. Assemble reel with FFmpeg
-
-Create a 9:16 reel with text captions:
-
+### 2. Generate voiceover (free, local)
 ```bash
-# Resize/crop clip to 9:16 (1080x1920)
-ffmpeg -i /tmp/clip1.mp4 -vf "crop=ih*9/16:ih,scale=1080:1920" -t 15 /tmp/reel_raw.mp4 -y
-
-# Add text overlay (caption)
-ffmpeg -i /tmp/reel_raw.mp4 -vf "drawtext=text='Your caption here':fontsize=48:fontcolor=white:x=(w-text_w)/2:y=h-th-200:box=1:boxcolor=black@0.5:boxborderw=10" -c:a copy /tmp/reel_final.mp4 -y
+# Write TTS text to file
+echo "Your voiceover text here" > /tmp/script.txt
+# Generate speech with espeak (saves as WAV)
+espeak -f /tmp/script.txt -w /tmp/voiceover.wav -s 150 -p 50
+# Or use Gemini TTS:
+# curl "https://texttospeech.googleapis.com/v1/text:synthesize?key=$GEMINI_API_KEY" ...
 ```
 
-For multi-clip reels with transitions:
+### 3. Add background music (free, local)
 ```bash
-# Create concat file
-echo "file '/tmp/clip1_ready.mp4'" > /tmp/concat.txt
-echo "file '/tmp/clip2_ready.mp4'" >> /tmp/concat.txt
-# Concatenate
-ffmpeg -f concat -safe 0 -i /tmp/concat.txt -c copy /tmp/reel.mp4 -y
+# Generate a simple music tone with sox
+sox -n /tmp/music.wav synth 15 sine 440 vol 0.1
+# Or use a silent track as placeholder
 ```
 
-### 4. Output
+### 4. Assemble with FFmpeg
+```bash
+# Crop clip to 9:16, add captions, mix with voiceover and music
+ffmpeg -i /tmp/clip1.mp4 -i /tmp/voiceover.wav -i /tmp/music.wav \
+  -filter_complex "[0:v]crop=ih*9/16:ih,scale=1080:1920,drawtext=text='Caption':fontsize=48:fontcolor=white:x=(w-text_w)/2:y=h-th-200:box=1:boxcolor=black@0.5:boxborderw=10[v];[1:a][2:a]amix=inputs=2:duration=first[a]" \
+  -map "[v]" -map "[a]" -t 15 /tmp/reel_final.mp4 -y
+```
 
-Store the final MP4 as `/tmp/reel_final.mp4`. The file is ready to post or share.
+### 5. Post reel
+Facebook reels can be posted as videos:
+```
+POST https://graph.facebook.com/v21.0/me/videos
+Params: access_token={FACEBOOK_ACCESS_TOKEN}, file=<video file>, description=<text>
+```
+
+## Cross-Posting
+
+When the user asks to post to multiple platforms:
+1. Adapt content for each platform (length, tone, format)
+2. Post to each platform sequentially
+3. Report results per platform
 
 ## Profile Check
 
 ```
 GET /me?fields=id,name,picture
 ```
-
-## Notes
-
-- Pexels API is free — 200 requests/hour, 20k requests/day
-- FFmpeg runs locally on the server (no external API cost)
-- Always use portrait orientation (`orientation=portrait`) for reels
-- Default duration: 15 seconds per clip, max 60 seconds total

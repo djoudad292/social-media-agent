@@ -73,10 +73,16 @@
       "social-poster": {
         "enabled": true,
         "env": {
-          "PEXELS_API_KEY": "${PEXELS_API_KEY}"
+          "PEXELS_API_KEY": "${PEXELS_API_KEY}",
+          "GEMINI_API_KEY": "${GEMINI_API_KEY}"
         }
       },
-      "content-writer": { "enabled": true },
+      "content-writer": {
+        "enabled": true,
+        "env": {
+          "GEMINI_API_KEY": "${GEMINI_API_KEY}"
+        }
+      },
       "analytics": { "enabled": true },
       "lead-hunter": { "enabled": true },
       "social-strategy": { "enabled": true }
