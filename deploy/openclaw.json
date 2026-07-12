@@ -70,7 +70,12 @@
   },
   "skills": {
     "entries": {
-      "social-poster": { "enabled": true },
+      "social-poster": {
+        "enabled": true,
+        "env": {
+          "PEXELS_API_KEY": "${PEXELS_API_KEY}"
+        }
+      },
       "content-writer": { "enabled": true },
       "analytics": { "enabled": true },
       "lead-hunter": { "enabled": true },

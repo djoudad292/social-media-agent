@@ -21,6 +21,11 @@ if [ ! -f "$CONFIG_FILE" ]; then
         echo "Setting gateway port to $PORT"
         sed -i "s/\"port\": [0-9]*/\"port\": $PORT/" "$CONFIG_FILE"
     fi
+
+    # Substitute env vars in config (${VAR} syntax)
+    if [ -n "$PEXELS_API_KEY" ]; then
+        sed -i "s/\${PEXELS_API_KEY}/$PEXELS_API_KEY/g" "$CONFIG_FILE"
+    fi
 fi
 
 # Ensure workspace exists (persistent across deploys)

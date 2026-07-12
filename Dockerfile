@@ -1,5 +1,5 @@
 FROM node:22-alpine
-RUN apk add --no-cache curl ca-certificates
+RUN apk add --no-cache curl ca-certificates ffmpeg
 
 RUN npm install -g openclaw@2026.6.11
 RUN ln -sf /usr/local/lib/node_modules/openclaw/openclaw.mjs /usr/local/bin/openclaw
