@@ -12,7 +12,7 @@
     }
   },
   "gateway": {
-    "mode": "remote",
+    "mode": "local",
     "auth": {
       "mode": "token"
     },
