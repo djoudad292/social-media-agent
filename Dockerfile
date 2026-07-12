@@ -1,6 +1,5 @@
 FROM node:22-alpine
-RUN apk add --no-cache curl ca-certificates ffmpeg espeak sox python3 py3-pip
-RUN pip3 install --break-system-packages edge-tts
+RUN apk add --no-cache curl ca-certificates ffmpeg espeak sox
 
 RUN npm install -g openclaw@2026.6.11
 RUN ln -sf /usr/local/lib/node_modules/openclaw/openclaw.mjs /usr/local/bin/openclaw
