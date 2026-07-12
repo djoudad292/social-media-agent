@@ -72,8 +72,8 @@
   "channels": {
     "telegram": {
       "enabled": true,
-      "token": "${TELEGRAM_BOT_TOKEN}",
-      "dmPolicy": "open"
+      "dmPolicy": "open",
+      "allowFrom": ["*"]
     }
   },
   "skills": {

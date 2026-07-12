@@ -22,15 +22,12 @@ if [ ! -f "$CONFIG_FILE" ]; then
         sed -i "s/\"port\": [0-9]*/\"port\": $PORT/" "$CONFIG_FILE"
     fi
 
-    # Substitute env vars in config (${VAR} syntax)
+    # Substitute env vars in config
     if [ -n "$PEXELS_API_KEY" ]; then
         sed -i "s/\${PEXELS_API_KEY}/$PEXELS_API_KEY/g" "$CONFIG_FILE"
     fi
     if [ -n "$GEMINI_API_KEY" ]; then
         sed -i "s/\${GEMINI_API_KEY}/$GEMINI_API_KEY/g" "$CONFIG_FILE"
-    fi
-    if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
-        sed -i "s/\${TELEGRAM_BOT_TOKEN}/$TELEGRAM_BOT_TOKEN/g" "$CONFIG_FILE"
     fi
 fi
 
@@ -38,4 +35,21 @@ fi
 mkdir -p "$STATE_DIR/workspace/memory" "$STATE_DIR/workspace/skills"
 
 echo "Starting OpenClaw gateway..."
-exec openclaw gateway
+openclaw gateway &
+
+# Wait for gateway to be ready
+GATEWAY_PID=$!
+for i in $(seq 1 30); do
+    if curl -sf http://localhost:${PORT:-10000}/health > /dev/null 2>&1; then
+        break
+    fi
+    sleep 2
+done
+
+# Inject Telegram bot token if provided
+if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+    echo "Adding Telegram channel..."
+    openclaw channels add --channel telegram --bot-token "$TELEGRAM_BOT_TOKEN" 2>/dev/null || true
+fi
+
+wait $GATEWAY_PID
