@@ -17,7 +17,7 @@
       "mode": "token"
     },
     "port": 10000,
-    "bind": "0.0.0.0",
+    "bind": "lan",
     "tailscale": { "mode": "off", "resetOnExit": false },
     "nodes": {
       "denyCommands": [
@@ -60,26 +60,11 @@
     }
   },
   "tools": {
-    "profile": "coding",
-    "web": {
-      "search": { "provider": "searxng" }
-    }
+    "profile": "coding"
   },
   "plugins": {
-    "allow": ["searxng", "whatsapp"],
     "entries": {
-      "whatsapp": { "enabled": true },
-      "openai": { "enabled": true },
-      "searxng": { "enabled": true }
-    }
-  },
-  "channels": {
-    "whatsapp": {
-      "enabled": true,
-      "selfChatMode": true,
-      "dmPolicy": "allowlist",
-      "allowFrom": ["+213780688125"],
-      "groupAllowFrom": ["+213780688125"]
+      "openai": { "enabled": true }
     }
   },
   "skills": {
@@ -90,5 +75,5 @@
       "lead-hunter": { "enabled": true },
       "social-strategy": { "enabled": true }
     }
-  },
+  }
 }
