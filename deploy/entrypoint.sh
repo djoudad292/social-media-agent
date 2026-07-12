@@ -1,0 +1,30 @@
+#!/bin/sh
+set -e
+
+STATE_DIR="${OPENCLAW_STATE_DIR:-/data/openclaw}"
+CONFIG_FILE="${OPENCLAW_CONFIG_PATH:-$STATE_DIR/openclaw.json}"
+
+# First run — seed state from bundled defaults
+if [ ! -f "$CONFIG_FILE" ]; then
+    echo "First run: initializing state directory from bundled defaults..."
+    mkdir -p "$STATE_DIR/workspace"
+
+    if [ -f /opt/openclaw-base/openclaw.json ]; then
+        cp /opt/openclaw-base/openclaw.json "$CONFIG_FILE"
+    fi
+    if [ -d /opt/openclaw-base/workspace ]; then
+        cp -r /opt/openclaw-base/workspace/* "$STATE_DIR/workspace/"
+    fi
+
+    # Inject Render's $PORT into the config
+    if [ -n "$PORT" ]; then
+        echo "Setting gateway port to $PORT"
+        sed -i "s/\"port\": [0-9]*/\"port\": $PORT/" "$CONFIG_FILE"
+    fi
+fi
+
+# Ensure workspace exists (persistent across deploys)
+mkdir -p "$STATE_DIR/workspace/memory" "$STATE_DIR/workspace/skills"
+
+echo "Starting OpenClaw gateway..."
+exec openclaw gateway

@@ -1,0 +1,94 @@
+{
+  "agents": {
+    "defaults": {
+      "workspace": "/data/openclaw/workspace",
+      "model": {
+        "primary": "openai/gpt-4o-mini"
+      },
+      "models": {
+        "openai/gpt-4o-mini": { "alias": "GPT" },
+        "google-generative-ai/gemini-2.0-flash": { "alias": "Gemini" }
+      }
+    }
+  },
+  "gateway": {
+    "mode": "remote",
+    "auth": {
+      "mode": "token"
+    },
+    "port": 10000,
+    "bind": "0.0.0.0",
+    "tailscale": { "mode": "off", "resetOnExit": false },
+    "nodes": {
+      "denyCommands": [
+        "camera.snap", "camera.clip", "screen.record",
+        "contacts.add", "calendar.add", "reminders.add",
+        "sms.send", "sms.search"
+      ]
+    }
+  },
+  "session": {
+    "dmScope": "per-channel-peer"
+  },
+  "models": {
+    "providers": {
+      "openai": {
+        "api": "openai-responses",
+        "baseUrl": "https://openrouter.ai/api/v1",
+        "models": [
+          { "id": "gpt-4o-mini", "name": "GPT-4o Mini (via OpenRouter)" },
+          { "id": "gpt-4o", "name": "GPT-4o (via OpenRouter)" }
+        ]
+      },
+      "google-generative-ai": {
+        "api": "google-generative-ai",
+        "models": [
+          { "id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash" }
+        ]
+      }
+    }
+  },
+  "auth": {
+    "profiles": {
+      "openai:default": {
+        "provider": "openai",
+        "mode": "api_key"
+      }
+    },
+    "order": {
+      "openai": ["openai:default"]
+    }
+  },
+  "tools": {
+    "profile": "coding",
+    "web": {
+      "search": { "provider": "searxng" }
+    }
+  },
+  "plugins": {
+    "allow": ["searxng", "whatsapp"],
+    "entries": {
+      "whatsapp": { "enabled": true },
+      "openai": { "enabled": true },
+      "searxng": { "enabled": true }
+    }
+  },
+  "channels": {
+    "whatsapp": {
+      "enabled": true,
+      "selfChatMode": true,
+      "dmPolicy": "allowlist",
+      "allowFrom": ["+213780688125"],
+      "groupAllowFrom": ["+213780688125"]
+    }
+  },
+  "skills": {
+    "entries": {
+      "social-poster": { "enabled": true },
+      "content-writer": { "enabled": true },
+      "analytics": { "enabled": true },
+      "lead-hunter": { "enabled": true },
+      "social-strategy": { "enabled": true }
+    }
+  },
+}

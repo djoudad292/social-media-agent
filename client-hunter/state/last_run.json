@@ -1,0 +1,11 @@
+{
+  "last_run": "2026-05-06T19:15:00+01:00",
+  "status": "completed_manual",
+  "leads_discovered": 5,
+  "high_priority_leads": 2,
+  "medium_priority_leads": 3,
+  "sources": ["web_search", "dev.to"],
+  "next_run": "2026-05-13T09:00:00+01:00",
+  "api_quota_exceeded": true,
+  "note": "Manual entry from web search results due to API quota limits"
+}

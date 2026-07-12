@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Social Media Agent — Workflow</title>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
+<style>
+  body { background: #0f172a; color: #f1f5f9; font-family: system-ui, sans-serif; padding: 2rem; }
+  h1 { text-align: center; color: #3b82f6; margin-bottom: 2rem; }
+  .container { max-width: 1200px; margin: 0 auto; background: #1e293b; padding: 2rem; border-radius: 12px; border: 1px solid #334155; }
+</style>
+</head>
+<body>
+  <h1>🤖 Social Media Agent — Workflow</h1>
+  <div class="container">
+    <pre class="mermaid">
+flowchart TD
+    A["📅 Cron Triggers"] --> B
+
+    subgraph B["🕐 Daily 8AM - Content Plan"]
+        B1["Read analytics memory"] --> B2["Generate posts via OpenRouter AI"]
+        B2 --> B3["Present to user on WhatsApp"]
+        B3 --> B4{"Approved?"}
+        B4 -->|"Yes"| B5["Post to Facebook / IG / LinkedIn"]
+        B4 -->|"No"| B6["Revise & resubmit"]
+    end
+
+    subgraph C["📊 Monday 10AM - Analytics Review"]
+        C1["Fetch platform stats"] --> C2["Compare week-over-week"]
+        C2 --> C3["Identify top content"]
+        C3 --> C4["Suggest strategy changes"]
+        C4 --> C5["Report to user"]
+    end
+
+    subgraph D["🎯 Monday 2PM - Lead Scan"]
+        D1["Web search for prospects"] --> D2["Score leads 0-1"]
+        D2 --> D3["Store in memory/leads/"]
+        D3 --> D4["Draft outreach if high score"]
+        D4 --> D5["Ask user before sending"]
+    end
+
+    subgraph E["💬 On Demand - User Requests"]
+        E1["Post something"] --> E2["Write about X"]
+        E1 --> F1["social-poster skill"]
+        E2 --> F2["content-writer skill"]
+    end
+
+    style A fill:#3b82f6,color:#fff
+    style B fill:#1e293b,color:#f1f5f9
+    style C fill:#1e293b,color:#f1f5f9
+    style D fill:#1e293b,color:#f1f5f9
+    style E fill:#1e293b,color:#f1f5f9
+    </pre>
+  </div>
+  <div style="text-align:center;margin-top:1rem;color:#94a3b8;font-size:0.9rem">
+    Skills: social-poster · content-writer · analytics · lead-hunter · social-strategy
+  </div>
+</body>
+</html>
