@@ -81,9 +81,15 @@
       "social-poster": {
         "enabled": true,
         "env": {
+          "FACEBOOK_ACCESS_TOKEN": "${FACEBOOK_ACCESS_TOKEN}",
           "PEXELS_API_KEY": "${PEXELS_API_KEY}",
-          "GEMINI_API_KEY": "${GEMINI_API_KEY}"
+          "GEMINI_API_KEY": "${GEMINI_API_KEY}",
+          "HIGGSFIELD_API_KEY": "${HIGGSFIELD_API_KEY}",
+          "PIXABAY_API_KEY": "${PIXABAY_API_KEY}"
         }
+      },
+      "comment-bot": {
+        "enabled": true
       },
       "content-writer": {
         "enabled": true,
