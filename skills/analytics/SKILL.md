@@ -1,6 +1,6 @@
 ---
 name: analytics
-description: Fetch Facebook page analytics via Graph API
+description: Fetch Facebook page analytics and report via chat
 ---
 
 ## Fetch Insights
@@ -14,13 +14,9 @@ GET https://graph.facebook.com/v21.0/me/insights
 
 ## Report Format
 
-When reporting, include:
+Output the report directly in your response. Include:
 - Followers count and change
 - Reach (28-day)
 - Engagement rate
 - Top-performing content type
 - Recommendation for next week
-
-## Storage
-
-Write snapshots to `memory/analytics/YYYY-MM-DD.json` for trend tracking.

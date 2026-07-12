@@ -29,6 +29,9 @@ if [ ! -f "$CONFIG_FILE" ]; then
     if [ -n "$GEMINI_API_KEY" ]; then
         sed -i "s/\${GEMINI_API_KEY}/$GEMINI_API_KEY/g" "$CONFIG_FILE"
     fi
+    if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+        sed -i "s/\${TELEGRAM_BOT_TOKEN}/$TELEGRAM_BOT_TOKEN/g" "$CONFIG_FILE"
+    fi
 fi
 
 # Ensure workspace exists (persistent across deploys)

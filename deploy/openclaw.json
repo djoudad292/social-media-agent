@@ -65,7 +65,15 @@
   },
   "plugins": {
     "entries": {
-      "openai": { "enabled": true }
+      "openai": { "enabled": true },
+      "telegram": { "enabled": true }
+    }
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "token": "${TELEGRAM_BOT_TOKEN}",
+      "dmPolicy": "open"
     }
   },
   "skills": {

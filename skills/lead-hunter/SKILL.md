@@ -1,6 +1,6 @@
 ---
 name: lead-hunter
-description: Search for potential clients needing software development services
+description: Search for potential clients and report findings via chat
 ---
 
 ## Discovery
@@ -19,8 +19,6 @@ For each lead, use `webfetch` to check:
 
 Score 0-1: budget indicators, need fit, timeline, accessibility
 
-## Storage
+## Output
 
-Store in `memory/leads/{company}.json` with: name, source, score, notes, status (DISCOVERED).
-
-Never contact leads without asking the user first.
+Report the top 3-5 leads in your response with name, why they're a fit, score, and suggested approach. Never contact leads without asking the user first.
