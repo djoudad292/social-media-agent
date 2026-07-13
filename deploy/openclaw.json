@@ -14,7 +14,8 @@
   "gateway": {
     "mode": "local",
     "auth": {
-      "mode": "token"
+      "mode": "token",
+      "token": "${OPENCLAW_GATEWAY_TOKEN}"
     },
     "port": 10000,
     "bind": "lan",

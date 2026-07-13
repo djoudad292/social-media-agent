@@ -3,3 +3,5 @@ __pycache__/
 *.pyc
 .DS_Store
 *.log
+# Accidental artifact from early cron runs (canonical path is memory/comments/)
+comments/

@@ -22,6 +22,12 @@ if [ ! -f "$CONFIG_FILE" ]; then
         sed -i "s/\"port\": [0-9]*/\"port\": $PORT/" "$CONFIG_FILE"
     fi
 
+    # Inject gateway token from env (for auth)
+    if [ -n "$OPENCLAW_GATEWAY_TOKEN" ]; then
+        echo "Setting gateway auth token"
+        sed -i "s/\${OPENCLAW_GATEWAY_TOKEN}/$OPENCLAW_GATEWAY_TOKEN/g" "$CONFIG_FILE"
+    fi
+
     # Substitute env vars in config
     if [ -n "$PEXELS_API_KEY" ]; then
         sed -i "s/\${PEXELS_API_KEY}/$PEXELS_API_KEY/g" "$CONFIG_FILE"
