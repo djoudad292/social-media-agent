@@ -89,7 +89,10 @@
         }
       },
       "comment-bot": {
-        "enabled": true
+        "enabled": true,
+        "env": {
+          "FACEBOOK_ACCESS_TOKEN": "${FACEBOOK_ACCESS_TOKEN}"
+        }
       },
       "content-writer": {
         "enabled": true,
