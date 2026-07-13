@@ -58,7 +58,7 @@ fi
 # Aggressive memory optimization for Render 512MB free tier
 export NODE_COMPILE_CACHE=/tmp/openclaw-compile-cache
 export OPENCLAW_NO_RESPAWN=1
-export NODE_OPTIONS="--max-old-space-size=256 --max-semi-space-size=2 --optimize-for-size"
+export NODE_OPTIONS="--max-old-space-size=256 --max-semi-space-size=2"
 mkdir -p /tmp/openclaw-compile-cache
 
 echo "Starting OpenClaw gateway..."
