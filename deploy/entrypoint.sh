@@ -49,28 +49,17 @@ fi
 # Ensure workspace exists (persistent across deploys)
 mkdir -p "$STATE_DIR/workspace/memory" "$STATE_DIR/workspace/skills"
 
-# Memory optimization for Render free tier
-export NODE_COMPILE_CACHE=/tmp/openclaw-compile-cache
-export OPENCLAW_NO_RESPAWN=1
-export NODE_OPTIONS="--max-old-space-size=384"
-mkdir -p /tmp/openclaw-compile-cache
-
-echo "Starting OpenClaw gateway..."
-openclaw gateway &
-
-# Wait for gateway to be ready
-GATEWAY_PID=$!
-for i in $(seq 1 30); do
-    if curl -sf http://localhost:${PORT:-10000}/health > /dev/null 2>&1; then
-        break
-    fi
-    sleep 2
-done
-
-# Inject Telegram bot token if provided
+# Inject Telegram bot token BEFORE starting gateway (saves memory — only one Node process at a time)
 if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
     echo "Adding Telegram channel..."
     openclaw channels add --channel telegram --bot-token "$TELEGRAM_BOT_TOKEN" 2>/dev/null || true
 fi
 
-wait $GATEWAY_PID
+# Aggressive memory optimization for Render 512MB free tier
+export NODE_COMPILE_CACHE=/tmp/openclaw-compile-cache
+export OPENCLAW_NO_RESPAWN=1
+export NODE_OPTIONS="--max-old-space-size=256 --max-semi-space-size=2 --optimize-for-size"
+mkdir -p /tmp/openclaw-compile-cache
+
+echo "Starting OpenClaw gateway..."
+exec openclaw gateway
