@@ -8,76 +8,54 @@ CONFIG_FILE="${OPENCLAW_CONFIG_PATH:-$STATE_DIR/openclaw.json}"
 if [ ! -f "$CONFIG_FILE" ]; then
     echo "First run: initializing state directory from bundled defaults..."
     mkdir -p "$STATE_DIR/workspace"
-
-    if [ -f /opt/openclaw-base/openclaw.json ]; then
-        cp /opt/openclaw-base/openclaw.json "$CONFIG_FILE"
-    fi
-    if [ -d /opt/openclaw-base/workspace ]; then
-        cp -r /opt/openclaw-base/workspace/* "$STATE_DIR/workspace/"
-    fi
-
-    # Inject Render's $PORT into the config
-    if [ -n "$PORT" ]; then
-        echo "Setting gateway port to $PORT"
-        sed -i "s/\"port\": [0-9]*/\"port\": $PORT/" "$CONFIG_FILE"
-    fi
-
-    # Inject gateway token from env (for auth)
-    if [ -n "$OPENCLAW_GATEWAY_TOKEN" ]; then
-        echo "Setting gateway auth token"
-        sed -i "s/\${OPENCLAW_GATEWAY_TOKEN}/$OPENCLAW_GATEWAY_TOKEN/g" "$CONFIG_FILE"
-    fi
-
-    # Substitute env vars in config
-    if [ -n "$OPENAI_API_KEY" ]; then
-        sed -i "s/\${OPENAI_API_KEY}/$OPENAI_API_KEY/g" "$CONFIG_FILE"
-    fi
-    if [ -n "$PEXELS_API_KEY" ]; then
-        sed -i "s/\${PEXELS_API_KEY}/$PEXELS_API_KEY/g" "$CONFIG_FILE"
-    fi
-    if [ -n "$GEMINI_API_KEY" ]; then
-        sed -i "s/\${GEMINI_API_KEY}/$GEMINI_API_KEY/g" "$CONFIG_FILE"
-    fi
-    if [ -n "$FACEBOOK_ACCESS_TOKEN" ]; then
-        sed -i "s/\${FACEBOOK_ACCESS_TOKEN}/$FACEBOOK_ACCESS_TOKEN/g" "$CONFIG_FILE"
-    fi
-    if [ -n "$MAGIC_HOUR_API_KEY" ]; then
-        sed -i "s/\${MAGIC_HOUR_API_KEY}/$MAGIC_HOUR_API_KEY/g" "$CONFIG_FILE"
-    fi
-    if [ -n "$UDIO_API_KEY" ]; then
-        sed -i "s/\${UDIO_API_KEY}/$UDIO_API_KEY/g" "$CONFIG_FILE"
-    fi
-    if [ -n "$REAPI_API_KEY" ]; then
-        sed -i "s/\${REAPI_API_KEY}/$REAPI_API_KEY/g" "$CONFIG_FILE"
-    fi
-    if [ -n "$DUB_API_KEY" ]; then
-        sed -i "s/\${DUB_API_KEY}/$DUB_API_KEY/g" "$CONFIG_FILE"
-    fi
-    if [ -n "$JINA_API_KEY" ]; then
-        sed -i "s/\${JINA_API_KEY}/$JINA_API_KEY/g" "$CONFIG_FILE"
-    fi
-    if [ -n "$FREENEWS_API_KEY" ]; then
-        sed -i "s/\${FREENEWS_API_KEY}/$FREENEWS_API_KEY/g" "$CONFIG_FILE"
-    fi
-    if [ -n "$RESEND_API_KEY" ]; then
-        sed -i "s/\${RESEND_API_KEY}/$RESEND_API_KEY/g" "$CONFIG_FILE"
-    fi
+    [ -f /opt/openclaw-base/openclaw.json ] && cp /opt/openclaw-base/openclaw.json "$CONFIG_FILE"
+    [ -d /opt/openclaw-base/workspace ] && cp -r /opt/openclaw-base/workspace/* "$STATE_DIR/workspace/"
 fi
 
 # Ensure workspace exists (persistent across deploys)
 mkdir -p "$STATE_DIR/workspace/memory" "$STATE_DIR/workspace/skills"
 
-# Inject Telegram bot token BEFORE starting gateway (saves memory — only one Node process at a time)
-if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
-    echo "Adding Telegram channel..."
-    openclaw channels add --channel telegram --bot-token "$TELEGRAM_BOT_TOKEN" 2>/dev/null || true
-fi
+# ── Env var substitution (runs EVERY startup, not just first-run) ──
+# Use | as sed delimiter to avoid breaking on / in API keys
+subst() { [ -n "$2" ] && sed -i "s|\${$1}|$2|g" "$CONFIG_FILE"; }
 
-# Aggressive memory optimization for Render 512MB free tier
+[ -n "$PORT" ] && sed -i "s|\"port\": [0-9]*|\"port\": $PORT|" "$CONFIG_FILE"
+
+subst OPENCLAW_GATEWAY_TOKEN "$OPENCLAW_GATEWAY_TOKEN"
+subst OPENAI_API_KEY "$OPENAI_API_KEY"
+subst PEXELS_API_KEY "$PEXELS_API_KEY"
+subst GEMINI_API_KEY "$GEMINI_API_KEY"
+subst FACEBOOK_ACCESS_TOKEN "$FACEBOOK_ACCESS_TOKEN"
+subst MAGIC_HOUR_API_KEY "$MAGIC_HOUR_API_KEY"
+subst UDIO_API_KEY "$UDIO_API_KEY"
+subst REAPI_API_KEY "$REAPI_API_KEY"
+subst DUB_API_KEY "$DUB_API_KEY"
+subst JINA_API_KEY "$JINA_API_KEY"
+subst FREENEWS_API_KEY "$FREENEWS_API_KEY"
+subst RESEND_API_KEY "$RESEND_API_KEY"
+
+# Memory optimization
 export NODE_COMPILE_CACHE=/tmp/openclaw-compile-cache
 export OPENCLAW_NO_RESPAWN=1
 export NODE_OPTIONS="--max-old-space-size=256 --max-semi-space-size=2"
 mkdir -p /tmp/openclaw-compile-cache
 
+# Start gateway in background so we can add Telegram channel while it runs
 echo "Starting OpenClaw gateway..."
-exec openclaw gateway
+openclaw gateway &
+GATEWAY_PID=$!
+
+# Wait for gateway to be ready before configuring channels
+if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
+    echo "Waiting for gateway before adding Telegram channel..."
+    for i in $(seq 1 15); do
+        if curl -sf "http://localhost:${PORT:-10000}/" >/dev/null 2>&1; then
+            echo "Gateway ready, adding Telegram channel..."
+            openclaw channels add --channel telegram --bot-token "$TELEGRAM_BOT_TOKEN" 2>/dev/null || true
+            break
+        fi
+        sleep 1
+    done
+fi
+
+wait $GATEWAY_PID
