@@ -41,12 +41,6 @@ if [ ! -f "$CONFIG_FILE" ]; then
     if [ -n "$FACEBOOK_ACCESS_TOKEN" ]; then
         sed -i "s/\${FACEBOOK_ACCESS_TOKEN}/$FACEBOOK_ACCESS_TOKEN/g" "$CONFIG_FILE"
     fi
-    if [ -n "$HIGGSFIELD_API_KEY" ]; then
-        sed -i "s/\${HIGGSFIELD_API_KEY}/$HIGGSFIELD_API_KEY/g" "$CONFIG_FILE"
-    fi
-    if [ -n "$PIXABAY_API_KEY" ]; then
-        sed -i "s/\${PIXABAY_API_KEY}/$PIXABAY_API_KEY/g" "$CONFIG_FILE"
-    fi
     if [ -n "$MAGIC_HOUR_API_KEY" ]; then
         sed -i "s/\${MAGIC_HOUR_API_KEY}/$MAGIC_HOUR_API_KEY/g" "$CONFIG_FILE"
     fi

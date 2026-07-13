@@ -60,21 +60,13 @@ espeak -f /tmp/script.txt -w /tmp/voiceover.wav -s 150 -p 50
 
 ### 3. Add background music
 
-**Option A — Free music from Pixabay API**
-```bash
-# Get free key at: https://pixabay.com/api/docs/ (free account)
-curl -s "https://pixabay.com/api/v1/music/?key=$PIXABAY_API_KEY&genre=ambient&duration_min=15&duration_max=30" \
-  | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['hits'][0]['url'] if d.get('hits') else 'none')" \
-  | xargs -I{} curl -L -o /tmp/background_music.mp3 "{}"
-```
-
-**Option B — Free music from Freesound (no key for downloads)**
+**Option A — Free music from Freesound (no key required)**
 ```bash
 curl -s "https://freesound.org/apiv2/search/text/?query=ambient+background&duration=15&fields=id,previews" \
   | python3 -c "import json,sys; d=json.load(sys.stdin); r=d['results'][0]; print(r['previews']['preview-lq-mp3'])"
 ```
 
-**Option C — Simple tone (always works, no dependencies)**
+**Option B — Simple tone (always works, no dependencies)**
 ```bash
 sox -n /tmp/music.wav synth 15 sine 440 vol 0.1
 ```
@@ -261,25 +253,6 @@ If `JINA_API_KEY` is set, read any URL as clean Markdown.
 curl -s "https://r.jina.ai/<URL>" \
   -H "Authorization: Bearer $JINA_API_KEY"
 ```
-
-## Optional: AI Video Generation (Higgsfield)
-
-If `HIGGSFIELD_API_KEY` is set and has credits, you can use AI-generated videos instead of Pexels.
-
-### Text-to-Video
-```bash
-curl -s -X POST "https://platform.higgsfield.ai/higgsfield-ai/dop/standard" \
-  -H "Authorization: Key ${HIGGSFIELD_API_KEY}" \
-  -H "Content-Type: application/json" \
-  -d '{"image_url": "<uploaded-image-url>", "prompt": "Cinematic camera movement", "duration": 5}'
-```
-
-### Use in Reel Pipeline
-When generating a reel:
-1. If user asks for **AI-generated visuals** → use Gemini Imagen + FFmpeg animation
-2. If user wants **talking avatar** → use Higgsfield Speak workflow (if key has credits)
-3. Always prefer edge-tts for voiceover (natural quality)
-4. Add animated SRT captions + background music
 
 ## Profile Check
 
