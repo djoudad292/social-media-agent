@@ -29,6 +29,9 @@ if [ ! -f "$CONFIG_FILE" ]; then
     fi
 
     # Substitute env vars in config
+    if [ -n "$OPENAI_API_KEY" ]; then
+        sed -i "s/\${OPENAI_API_KEY}/$OPENAI_API_KEY/g" "$CONFIG_FILE"
+    fi
     if [ -n "$PEXELS_API_KEY" ]; then
         sed -i "s/\${PEXELS_API_KEY}/$PEXELS_API_KEY/g" "$CONFIG_FILE"
     fi
