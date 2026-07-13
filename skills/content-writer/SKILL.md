@@ -5,6 +5,8 @@ description: Generate text, images, captions, hashtags, and repurpose content
 
 Generate content using your built-in LLM. Do not call external APIs for text generation.
 
+All API keys available: GEMINI_API_KEY, FREENEWS_API_KEY, JINA_API_KEY
+
 ## Content Types
 
 - **Post**: 2-3 sentence caption + 3-5 hashtags + CTA
@@ -25,6 +27,24 @@ Save the returned image as `/tmp/post_image.png`.
 ## Image Captions
 
 When given an image, describe it in 1-2 sentences for accessibility. Include key visual details.
+
+## Content Inspiration from News (FreeNewsApi)
+
+If `FREENEWS_API_KEY` is set, fetch trending news for content ideas:
+```bash
+curl -s "https://api.freenewsapi.io/v1/news?limit=10" \
+  -H "X-API-Key: $FREENEWS_API_KEY"
+```
+Use the returned articles to find timely topics to write about. Can filter by `topic`, `language`, `country`.
+
+## Web Research (Jina AI)
+
+If `JINA_API_KEY` is set, read any URL as clean Markdown for research:
+```bash
+curl -s "https://r.jina.ai/<URL>" \
+  -H "Authorization: Bearer $JINA_API_KEY"
+```
+Use this to research topics, read competitor content, or extract information from web pages.
 
 ## Hashtag Research
 

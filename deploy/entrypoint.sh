@@ -44,6 +44,27 @@ if [ ! -f "$CONFIG_FILE" ]; then
     if [ -n "$PIXABAY_API_KEY" ]; then
         sed -i "s/\${PIXABAY_API_KEY}/$PIXABAY_API_KEY/g" "$CONFIG_FILE"
     fi
+    if [ -n "$MAGIC_HOUR_API_KEY" ]; then
+        sed -i "s/\${MAGIC_HOUR_API_KEY}/$MAGIC_HOUR_API_KEY/g" "$CONFIG_FILE"
+    fi
+    if [ -n "$UDIO_API_KEY" ]; then
+        sed -i "s/\${UDIO_API_KEY}/$UDIO_API_KEY/g" "$CONFIG_FILE"
+    fi
+    if [ -n "$REAPI_API_KEY" ]; then
+        sed -i "s/\${REAPI_API_KEY}/$REAPI_API_KEY/g" "$CONFIG_FILE"
+    fi
+    if [ -n "$DUB_API_KEY" ]; then
+        sed -i "s/\${DUB_API_KEY}/$DUB_API_KEY/g" "$CONFIG_FILE"
+    fi
+    if [ -n "$JINA_API_KEY" ]; then
+        sed -i "s/\${JINA_API_KEY}/$JINA_API_KEY/g" "$CONFIG_FILE"
+    fi
+    if [ -n "$FREENEWS_API_KEY" ]; then
+        sed -i "s/\${FREENEWS_API_KEY}/$FREENEWS_API_KEY/g" "$CONFIG_FILE"
+    fi
+    if [ -n "$RESEND_API_KEY" ]; then
+        sed -i "s/\${RESEND_API_KEY}/$RESEND_API_KEY/g" "$CONFIG_FILE"
+    fi
 fi
 
 # Ensure workspace exists (persistent across deploys)

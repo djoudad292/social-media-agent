@@ -3,7 +3,7 @@ name: social-poster
 description: Post content to Facebook, build reels with Pexels + FFmpeg, add TTS voiceover and music
 ---
 
-All API keys available: FACEBOOK_ACCESS_TOKEN, PEXELS_API_KEY, GEMINI_API_KEY
+All API keys available: FACEBOOK_ACCESS_TOKEN, PEXELS_API_KEY, GEMINI_API_KEY, MAGIC_HOUR_API_KEY, UDIO_API_KEY, REAPI_API_KEY, DUB_API_KEY, JINA_API_KEY
 
 ## Facebook Post
 
@@ -160,6 +160,106 @@ openclaw cron add --name auto-poster \
   --schedule "0 9,15 * * 1-5" \
   --task "Check weekly plan, generate next post, publish to Facebook" \
   --deliver whatsapp:+213780688125
+```
+
+## AI Video Generation — Magic Hour (Veo 3.1)
+
+If `MAGIC_HOUR_API_KEY` is set, use Magic Hour for AI video generation.
+
+### Text-to-Video
+```bash
+curl -s -X POST "https://api.magichour.ai/v1/text-to-video" \
+  -H "Authorization: Bearer $MAGIC_HOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model_name":"veo-3.1","resolution":"720p","end_seconds":5,"aspect_ratio":"9:16","style":{"prompt":"<detailed scene description, cinematic>"}}'
+```
+Poll `GET https://api.magichour.ai/v1/video-projects/{id}` until status="complete", then read `downloads[0].url`.
+
+### Image-to-Video
+```bash
+curl -s -X POST "https://api.magichour.ai/v1/image-to-video" \
+  -H "Authorization: Bearer $MAGIC_HOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model_name":"veo-3.1","resolution":"720p","end_seconds":5,"aspect_ratio":"9:16","style":{"prompt":"<motion description>"},"image_url":"<public image URL>"}'
+```
+
+### AI Image Generation
+```bash
+curl -s -X POST "https://api.magichour.ai/v1/ai-image-generator" \
+  -H "Authorization: Bearer $MAGIC_HOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model_name":"nano-banana-2","style":{"prompt":"<image description>"},"image_count":1}'
+```
+
+### AI Voiceover (celebrity voices)
+```bash
+curl -s -X POST "https://api.magichour.ai/v1/ai-voice-generator" \
+  -H "Authorization: Bearer $MAGIC_HOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"voice_id":"default","style":{"prompt":"<your text>","voice_name":"<name from list>"}}'
+```
+Voice options: "Joe Rogan", "Morgan Freeman", "David Attenborough", "Taylor Swift", "MrBeast", "Snoop Dogg", "Eminem", and 200+ more.
+
+## AI Video Generation — reAPI (HappyHorse 1.0, Kling 3.0)
+
+If `REAPI_API_KEY` is set, use reAPI for top-ranked AI video.
+
+### HappyHorse 1.0 (currently #1 on leaderboard)
+```bash
+curl -s -X POST "https://reapi.ai/api/v1/videos/generations" \
+  -H "Authorization: Bearer $REAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"happyhorse-1.0","prompt":"<detailed scene>","size":"9:16","duration":5}'
+```
+Poll `GET https://reapi.ai/api/v1/tasks/{task_id}` until status="completed".
+
+### Kling 3.0
+```bash
+curl -s -X POST "https://reapi.ai/api/v1/videos/generations" \
+  -H "Authorization: Bearer $REAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"kling-3-0","prompt":"<detailed scene>","size":"9:16","duration":5}'
+```
+
+### Midjourney V7 Images
+```bash
+curl -s -X POST "https://reapi.ai/api/v1/images/generations" \
+  -H "Authorization: Bearer $REAPI_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"mj-v7","prompt":"<image description> --ar 9:16"}'
+```
+
+## AI Music Generation — UdioAPI.pro
+
+If `UDIO_API_KEY` is set, generate custom background music for reels.
+
+```bash
+curl -s -X POST "https://udioapi.pro/api/v2/generate" \
+  -H "Authorization: Bearer $UDIO_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"model":"suno-v4","prompt":"<style description>","duration":15}'
+```
+Poll `GET https://udioapi.pro/api/v2/tasks/{task_id}` until done.
+
+## URL Shortener — Dub.co
+
+If `DUB_API_KEY` is set, shorten URLs with click tracking (domain: djaouad-tech.com).
+
+```bash
+curl -s -X POST "https://api.dub.co/links" \
+  -H "Authorization: Bearer $DUB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"<long URL>","domain":"djaouad-tech.com"}'
+```
+Response includes `shortLink` field.
+
+## Web Research — Jina AI Reader
+
+If `JINA_API_KEY` is set, read any URL as clean Markdown.
+
+```bash
+curl -s "https://r.jina.ai/<URL>" \
+  -H "Authorization: Bearer $JINA_API_KEY"
 ```
 
 ## Optional: AI Video Generation (Higgsfield)

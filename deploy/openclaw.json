@@ -86,7 +86,12 @@
           "PEXELS_API_KEY": "${PEXELS_API_KEY}",
           "GEMINI_API_KEY": "${GEMINI_API_KEY}",
           "HIGGSFIELD_API_KEY": "${HIGGSFIELD_API_KEY}",
-          "PIXABAY_API_KEY": "${PIXABAY_API_KEY}"
+          "PIXABAY_API_KEY": "${PIXABAY_API_KEY}",
+          "MAGIC_HOUR_API_KEY": "${MAGIC_HOUR_API_KEY}",
+          "UDIO_API_KEY": "${UDIO_API_KEY}",
+          "REAPI_API_KEY": "${REAPI_API_KEY}",
+          "DUB_API_KEY": "${DUB_API_KEY}",
+          "JINA_API_KEY": "${JINA_API_KEY}"
         }
       },
       "comment-bot": {
@@ -98,12 +103,26 @@
       "content-writer": {
         "enabled": true,
         "env": {
-          "GEMINI_API_KEY": "${GEMINI_API_KEY}"
+          "GEMINI_API_KEY": "${GEMINI_API_KEY}",
+          "FREENEWS_API_KEY": "${FREENEWS_API_KEY}",
+          "JINA_API_KEY": "${JINA_API_KEY}"
         }
       },
       "analytics": { "enabled": true },
-      "lead-hunter": { "enabled": true },
-      "social-strategy": { "enabled": true }
+      "lead-hunter": {
+        "enabled": true,
+        "env": {
+          "RESEND_API_KEY": "${RESEND_API_KEY}"
+        }
+      },
+      "social-strategy": {
+        "enabled": true,
+        "env": {
+          "FREENEWS_API_KEY": "${FREENEWS_API_KEY}",
+          "DUB_API_KEY": "${DUB_API_KEY}",
+          "RESEND_API_KEY": "${RESEND_API_KEY}"
+        }
+      }
     }
   }
 }
