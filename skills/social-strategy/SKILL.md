@@ -5,6 +5,8 @@ description: Orchestrate daily/weekly content strategy, repurposing, auto-poster
 
 Coordinate all social media workflow. Skills available: content-writer, social-poster, analytics, lead-hunter, comment-bot.
 
+All API keys available: FREENEWS_API_KEY, DUB_API_KEY, RESEND_API_KEY, JINA_API_KEY
+
 ## Weekly Content Calendar
 
 Every Monday, read past analytics from `memory/analytics/` and propose a weekly plan.
@@ -60,6 +62,49 @@ The `auto-poster` cron runs Mon-Fri at 9AM and 3PM UTC:
 - 10% Promotional
 - 10% Personal
 
+## Content Inspiration from News (FreeNewsApi)
+
+Before planning the weekly calendar, check trending news for timely topics:
+```bash
+curl -s "https://api.freenewsapi.io/v1/news?limit=10&topic=technology" \
+  -H "X-API-Key: $FREENEWS_API_KEY"
+```
+Pick 2-3 trending stories relevant to "building with APIs / software dev" and weave them into the weekly plan.
+
+## Link Tracking (Dub.co)
+
+When planning posts that include links, generate shortened tracked links:
+```bash
+curl -s -X POST "https://api.dub.co/links" \
+  -H "Authorization: Bearer $DUB_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"url":"<long URL>","domain":"djaouad-tech.com"}'
+```
+The `shortLink` goes into the post. Analytics later tracks clicks.
+
+## Weekly Newsletter (Resend)
+
+Every Sunday, compile the week's best posts into a newsletter:
+```bash
+curl -s -X POST "https://api.resend.com/emails" \
+  -H "Authorization: Bearer $RESEND_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": "Djaouad Tech Newsletter <hello@cuvva.info.uk>",
+    "to": "<subscriber-list>",
+    "subject": "This Week in Building with APIs",
+    "html": "<formatted recap of the week>"
+  }'
+```
+
+## Cron: Weekly Newsletter
+```bash
+openclaw cron add --name weekly-newsletter \
+  --schedule "0 11 * * 0" \
+  --task "Compile best posts from memory/posts/, create newsletter, shorten links with Dub.co, send via Resend" \
+  --deliver whatsapp:+213780688125
+```
+
 ## Content Repurposing
 
 | Original | Repurposed To |
@@ -80,6 +125,16 @@ Repurposing workflow:
 1. Facebook (broad reach, connected)
 2. Instagram/Reels (visual content, once IG account is connected)
 3. TikTok (future)
+
+## Cron: News-Driven Content Ideas
+
+Run daily to inject trending topics into the strategy:
+```bash
+openclaw cron add --name news-to-content \
+  --schedule "0 8 * * 1-5" \
+  --task "Fetch trending tech news via FreeNewsApi, generate 2-3 post ideas, update memory/strategy/" \
+  --deliver whatsapp:+213780688125
+```
 
 ## Weekly Review (Friday)
 
