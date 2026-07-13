@@ -43,6 +43,12 @@ fi
 # Ensure workspace exists (persistent across deploys)
 mkdir -p "$STATE_DIR/workspace/memory" "$STATE_DIR/workspace/skills"
 
+# Memory optimization for Render free tier
+export NODE_COMPILE_CACHE=/tmp/openclaw-compile-cache
+export OPENCLAW_NO_RESPAWN=1
+export NODE_OPTIONS="--max-old-space-size=384"
+mkdir -p /tmp/openclaw-compile-cache
+
 echo "Starting OpenClaw gateway..."
 openclaw gateway &
 
