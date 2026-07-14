@@ -3,10 +3,11 @@
     "defaults": {
       "workspace": "/data/openclaw/workspace",
       "model": {
-        "primary": "openai/gpt-4o-mini"
+        "primary": "openai/google/gemini-2.0-flash-exp:free"
       },
       "models": {
-        "openai/gpt-4o-mini": { "alias": "GPT" },
+        "openai/google/gemini-2.0-flash-exp:free": { "alias": "Gemini Free" },
+        "openai/microsoft/phi-3.5-mini-128k-instruct:free": { "alias": "Phi Free" },
         "google-generative-ai/gemini-2.0-flash": { "alias": "Gemini" }
       }
     }
@@ -38,8 +39,9 @@
         "apiKey": "${OPENAI_API_KEY}",
         "baseUrl": "https://openrouter.ai/api/v1",
         "models": [
-          { "id": "gpt-4o-mini", "name": "GPT-4o Mini (via OpenRouter)" },
-          { "id": "gpt-4o", "name": "GPT-4o (via OpenRouter)" }
+          { "id": "google/gemini-2.0-flash-exp:free", "name": "Gemini 2.0 Flash Free" },
+          { "id": "microsoft/phi-3.5-mini-128k-instruct:free", "name": "Phi-3.5 Mini Free" },
+          { "id": "meta-llama/llama-3.2-3b-instruct:free", "name": "Llama 3.2 3B Free" }
         ]
       },
       "google-generative-ai": {
