@@ -11,12 +11,13 @@ ENV OPENCLAW_STATE_DIR=/data/openclaw \
 COPY deploy/openclaw.json /opt/openclaw-base/openclaw.json
 COPY AGENTS.md /opt/openclaw-base/workspace/AGENTS.md
 COPY USER.md /opt/openclaw-base/workspace/USER.md
+COPY post-to-facebook.sh /opt/openclaw-base/workspace/post-to-facebook.sh
 COPY memory/ /opt/openclaw-base/workspace/memory/
 COPY skills/ /opt/openclaw-base/workspace/skills/
 COPY deploy/entrypoint.sh /entrypoint.sh
 COPY deploy/azure-proxy.js /opt/openclaw-base/azure-proxy.js
 
-RUN chmod +x /entrypoint.sh
+RUN chmod +x /entrypoint.sh /opt/openclaw-base/workspace/post-to-facebook.sh
 
 WORKDIR /data
 EXPOSE 10000

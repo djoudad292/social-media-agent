@@ -30,8 +30,8 @@ Follow these steps EXACTLY without deviation:
 3. Say "Starting to create your post now..."
 4. Generate ONE post (your best guess). Do not show multiple options.
 5. Say "Posting to Facebook..."
-6. **POST TO FACEBOOK IMMEDIATELY.** Use the Facebook Graph API. Post to `me/feed`.
-7. Say "Done! [link to post]"
+6. **POST TO FACEBOOK IMMEDIATELY.** Run: `bash /data/openclaw/workspace/post-to-facebook.sh "your post text here"`. Do NOT construct curl. Do NOT ask for tokens. Just run the script.
+7. Say "Done! [link from script output]"
 
 **CRITICAL RULES:**
 - Do NOT ask "which platform?" — we only post to Facebook.
@@ -86,9 +86,11 @@ Present them to the user with suggested formats (post/reel/challenge).
 
 ## Facebook Post
 
-```
-POST https://graph.facebook.com/v21.0/me/feed
-Params: access_token={FACEBOOK_ACCESS_TOKEN}, message=<content>
+The helper script at `/data/openclaw/workspace/post-to-facebook.sh` handles posting. It reads `FACEBOOK_ACCESS_TOKEN` from the environment automatically.
+
+**TO POST: Run this exact command.** Do NOT construct curl commands yourself. Do NOT ask for tokens. Just run:
+```bash
+bash /data/openclaw/workspace/post-to-facebook.sh "Your message here"
 ```
 
 ## Reel Generation (9:16)
@@ -208,9 +210,12 @@ ffmpeg -i /tmp/clip1.mp4 -i /tmp/voiceover.mp3 -i /tmp/music.wav \
 ```
 
 ### 5. Post reel to Facebook
-```
-POST https://graph.facebook.com/v21.0/me/videos
-Params: access_token={FACEBOOK_ACCESS_TOKEN}, file=<video file>, description=<text>
+Post the video file using the Graph API. The `FACEBOOK_ACCESS_TOKEN` is available in the environment:
+```bash
+curl -s -X POST "https://graph.facebook.com/v21.0/me/videos" \
+  -F "access_token=$FACEBOOK_ACCESS_TOKEN" \
+  -F "file=@/tmp/reel_final.mp4" \
+  -F "description=Your description here"
 ```
 
 ### 6. Post reel to TikTok (optional)
@@ -223,7 +228,7 @@ Body: multipart with source=video.mp4 and description=text
 ### 7. Post reel to Instagram (optional)
 
 **Prerequisite:** An Instagram Business Account must be connected to your Facebook page.
-Check with: `GET https://graph.facebook.com/v21.0/651243158078819?fields=instagram_business_account&access_token={FACEBOOK_ACCESS_TOKEN}`
+Check with: `curl -s "https://graph.facebook.com/v21.0/651243158078819?fields=instagram_business_account&access_token=$FACEBOOK_ACCESS_TOKEN"`
 
 If `instagram_business_account` is null, go to Instagram → Settings → Account → Linked Accounts → Facebook → select your page.
 
@@ -235,12 +240,12 @@ curl -X POST "https://graph.facebook.com/v21.0/{ig-user-id}/media" \
   -d "media_type=REELS" \
   -d "video_url=https://your-server.com/reel_final.mp4" \
   -d "caption=Your caption with #hashtags" \
-  -d "access_token={FACEBOOK_ACCESS_TOKEN}"
+  -d "access_token=$FACEBOOK_ACCESS_TOKEN"
 
 # Step 3: Get the container ID from the response, then publish it
 curl -X POST "https://graph.facebook.com/v21.0/{ig-user-id}/media_publish" \
   -d "creation_id={container-id}" \
-  -d "access_token={FACEBOOK_ACCESS_TOKEN}"
+  -d "access_token=$FACEBOOK_ACCESS_TOKEN"
 ```
 
 ## Cross-Posting

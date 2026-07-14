@@ -12,8 +12,8 @@ When the user sends `/postnow`:
 4. **Say "Starting to create your post now..."** immediately.
 5. Generate ONE post using the topic the user gave (or AI/tech if none).
 6. **Say "Posting to Facebook..."** 
-7. **POST TO FACEBOOK.** Use Graph API `me/feed` with `access_token` and `message`.
-8. **Say "Done! [link]"** with the post URL.
+7. **POST TO FACEBOOK.** Run: `bash /data/openclaw/workspace/post-to-facebook.sh "your message"`. The script handles Graph API and token automatically.
+8. **Say "Done! [link]"** with the post URL from the script output.
 
 THIS IS A DIRECT ORDER. Do not deviate. Do not ask. Just post.
 
