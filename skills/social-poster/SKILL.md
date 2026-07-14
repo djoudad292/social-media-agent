@@ -16,6 +16,12 @@ When a user sends these commands via Telegram bot, handle them as follows:
 4. If approved, post to Facebook using Graph API
 5. Confirm to the user with a link or summary
 
+### /postnow <topic>
+1. Ask the user for the topic/details if not provided (tone, length, image)
+2. Generate the Facebook post using content-writer skill
+3. **Post directly to Facebook without asking for approval**
+4. Confirm to the user with a link to the post or summary
+
 ### /reel <topic>
 1. Ask the user for the topic if not provided
 2. Generate a reel script (15s max)
@@ -54,9 +60,10 @@ Search web for trending AI/tech topics, generate 5 content ideas for the week.
 Present them to the user with suggested formats (post/reel/challenge).
 
 ## Important Rules
-- ALWAYS ask the user for approval before posting anything they request manually
+- For `/postnow`, post directly without showing preview or asking — just do it and confirm
+- For `/post`, always ask for approval before publishing
 - For scheduled cron jobs, post automatically but notify the user after
-- If the user says "just post it" without preview, respect their preference and post directly
+- If the user says "just post it" or similar, respect their preference and post directly
 - Log all posts to memory/posts/YYYY-MM-DD.json
 
 ## Facebook Post

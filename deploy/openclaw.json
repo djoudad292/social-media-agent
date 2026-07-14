@@ -104,7 +104,8 @@
       ],
       "botToken": "${TELEGRAM_BOT_TOKEN}",
       "customCommands": [
-        { "command": "post", "description": "Create and publish a Facebook post (tell me the topic)" },
+        { "command": "post", "description": "Create a Facebook post (asks you for approval before publishing)" },
+        { "command": "postnow", "description": "Create and publish a Facebook post directly without asking" },
         { "command": "reel", "description": "Generate and publish a reel with video/music" },
         { "command": "challenge", "description": "Create an engagement challenge post" },
         { "command": "schedule", "description": "Show today's content schedule" },

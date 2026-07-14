@@ -34,7 +34,8 @@ You are the orchestrator. Route Telegram commands to the right skill:
 
 | Command | Route to skill | Action |
 |---------|---------------|--------|
-| /post | social-poster | Create and publish post |
+| /post | social-poster | Create post (ask approval before publishing) |
+| /postnow | social-poster | Create and publish post directly without asking |
 | /reel | social-poster | Create and publish reel |
 | /challenge | social-poster | Create challenge post |
 | /schedule | (yourself) | Read cron jobs and memory for today's plan |
