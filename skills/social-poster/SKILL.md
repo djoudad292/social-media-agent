@@ -43,15 +43,48 @@ ffmpeg -loop 1 -i /tmp/reel_bg.png -t 10 -vf "scale=1080:1920,zoompan=z=zoom+0.0
   -c:v libx264 -pix_fmt yuv420p /tmp/animated_bg.mp4 -y
 ```
 
-### 2. Generate voiceover (free, natural quality)
+### 2. Generate voiceover (pick the best option for your needs)
 
-**Primary: edge-tts (Microsoft Neural TTS, free, no API key)**
+**Option A — Azure AI Speech TTS (highest quality, Arabic support, uses $100 credits)**
+```bash
+# Azure Speech TTS — 45+ voices across 15 languages, including Arabic
+# Uses AZURE_SPEECH_KEY and AZURE_SPEECH_REGION env vars
+IFS= read -d '' SSML << 'SSML_END'
+<speak version="1.0" xmlns="http://www.w3.org/2001/10/synthesis" xml:lang="en-US">
+  <voice name="en-US-JennyNeural">
+    Your voiceover text here — Azure Neural TTS produces the most natural output.
+  </voice>
+</speak>
+SSML_END
+
+curl -s -X POST "https://${AZURE_SPEECH_REGION}.tts.speech.microsoft.com/cognitiveservices/v1" \
+  -H "Ocp-Apim-Subscription-Key: ${AZURE_SPEECH_KEY}" \
+  -H "Content-Type: application/ssml+xml" \
+  -H "X-Microsoft-OutputFormat: audio-16khz-128kbitrate-mono-mp3" \
+  -d "$SSML" -o /tmp/voiceover.mp3
+
+# Arabic voice example (change xml:lang to "ar-SA" and voice to "ar-SA-ZariyahNeural"):
+# curl (same as above) with SSML using xml:lang="ar-SA", voice name="ar-SA-ZariyahNeural"
+```
+
+Available Azure Neural voices: en-US-JennyNeural (female), en-US-GuyNeural (male), en-GB-SoniaNeural (British), ar-SA-ZariyahNeural (Arabic female), ar-SA-HamedNeural (Arabic male), and 400+ more across 140+ locales.
+
+**Option B — edge-tts (free, no API key, good quality)**
 ```bash
 # Install: pip install --break-system-packages edge-tts
 echo "Your voiceover text here" > /tmp/script.txt
 edge-tts --file /tmp/script.txt --voice en-US-JennyNeural --write-media /tmp/voiceover.mp3
 # Other good voices: en-US-GuyNeural (male), en-GB-SoniaNeural (British female)
 ```
+
+**Option C — Magic Hour (celebrity voices, uses credits)**
+```bash
+curl -s -X POST "https://api.magichour.ai/v1/ai-voice-generator" \
+  -H "Authorization: Bearer $MAGIC_HOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"voice_id":"default","style":{"prompt":"<your text>","voice_name":"Morgan Freeman"}}'
+```
+Voices: Joe Rogan, Morgan Freeman, David Attenborough, Taylor Swift, MrBeast, Snoop Dogg, etc.
 
 **Fallback: espeak (robotic, no dependencies)**
 ```bash
@@ -253,6 +286,25 @@ If `JINA_API_KEY` is set, read any URL as clean Markdown.
 curl -s "https://r.jina.ai/<URL>" \
   -H "Authorization: Bearer $JINA_API_KEY"
 ```
+
+## Media Hosting — Azure Blob Storage
+
+If `AZURE_STORAGE_CONNECTION_STRING` is set, upload media files for public access (required for Instagram Reels posting).
+
+```bash
+# Upload a file to Azure Blob Storage in the "media" container
+az storage blob upload \
+  --connection-string "$AZURE_STORAGE_CONNECTION_STRING" \
+  --container-name "$AZURE_STORAGE_CONTAINER" \
+  --file /tmp/reel_final.mp4 \
+  --name reels/$(date +%Y%m%d-%H%M%S).mp4
+
+# Get the public URL
+# The blob URL follows this pattern:
+echo "https://${AZURE_STORAGE_CONTAINER}.blob.core.windows.net/media/reels/$(date +%Y%m%d-%H%M%S).mp4"
+```
+
+Use Azure Blob Storage URLs as the `video_url` when posting Reels to Instagram (requires public blob URL).
 
 ## Profile Check
 
