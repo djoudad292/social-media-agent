@@ -23,6 +23,9 @@ function sendJson(res, status, data) {
 }
 
 const server = http.createServer((req, res) => {
+  if (req.url === '/health' || req.url === '/') {
+    return sendJson(res, 200, { ok: true, status: 'proxy-live' });
+  }
   if (req.method !== 'POST' || !req.url.includes('/chat/completions')) {
     return sendJson(res, 404, { error: { message: 'Not found', type: 'proxy_error' } });
   }
@@ -50,6 +53,8 @@ const server = http.createServer((req, res) => {
       };
       delete azureBody.max_tokens;
 
+      const startTime = Date.now();
+      console.log('PROXY: forwarding request to Azure model=' + model + ' messages=' + (azureBody.messages?.length || 0));
       const { status, data } = await new Promise((resolve, reject) => {
         const opts = {
           hostname: parsed.hostname,
@@ -69,6 +74,7 @@ const server = http.createServer((req, res) => {
         r.end();
       });
 
+      console.log('PROXY: Azure responded status=' + status + ' time=' + (Date.now() - startTime) + 'ms');
       res.writeHead(status, { 'Content-Type': 'application/json' });
       res.end(data);
     } catch (e) {
