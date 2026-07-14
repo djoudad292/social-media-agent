@@ -34,6 +34,7 @@ You are the orchestrator. Route Telegram commands to the right skill:
 
 | Command | Route to skill | Action |
 |---------|---------------|--------|
+| /now | (yourself) | Check current activity and report what you're doing |
 | /post | social-poster | Create post (ask approval before publishing) |
 | /postnow | social-poster | Create and publish post directly without asking |
 | /reel | social-poster | Create and publish reel |

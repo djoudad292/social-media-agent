@@ -66,32 +66,32 @@ if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
 
             openclaw cron add --name morning-post \
               --schedule "0 9 * * 1-6" \
-              --task "Check memory/pause.json first - if it exists, skip and tell me auto-posting is paused. Otherwise: generate an educational or inspirational Facebook post about AI/tech. Use content-writer skill to write it. Check the weekly strategy plan first. Post to Facebook. Deliver a summary to me." \
+              --task "First tell me 'Starting morning post...' in this chat. Then check memory/pause.json — if it exists, tell me auto-posting is paused and stop. Otherwise: generate an educational or inspirational Facebook post about AI/tech. Use content-writer skill to write it. Post to Facebook. Finally tell me 'Done! [summary]' with a link." \
               --deliver "telegram:5011701218" 2>/dev/null || true
 
             openclaw cron add --name midday-reel \
               --schedule "0 12 * * 1-6" \
-              --task "Check memory/pause.json first - if it exists, skip. Otherwise: create a short engaging reel (9:16) about AI/tech using Pexels clips or AI images. Add TTS voiceover and background music. Post to Facebook. Deliver a link to me." \
+              --task "First tell me 'Starting midday reel...' in this chat. Then check memory/pause.json — if it exists, tell me paused and stop. Otherwise: create a short engaging reel (9:16) about AI/tech using Pexels clips or AI images. Add TTS voiceover and background music. Post to Facebook. Finally tell me 'Reel done! [link]'." \
               --deliver "telegram:5011701218" 2>/dev/null || true
 
             openclaw cron add --name afternoon-post \
               --schedule "0 15 * * 1-6" \
-              --task "Check memory/pause.json first - if it exists, skip. Otherwise: create a trending/engagement Facebook post. Use web research to find something relevant to AI/tech. Include a question or poll to drive comments. Post and deliver summary." \
+              --task "First tell me 'Starting afternoon post...' in this chat. Then check memory/pause.json — if it exists, tell me paused and stop. Otherwise: create a trending/engagement Facebook post. Use web research. Include a question or poll to drive comments. Post. Finally tell me 'Posted! [summary]'." \
               --deliver "telegram:5011701218" 2>/dev/null || true
 
             openclaw cron add --name evening-challenge \
               --schedule "0 18 * * 1-6" \
-              --task "Check memory/pause.json first - if it exists, skip. Otherwise: create an interactive challenge or poll for Facebook followers. Make it fun and engaging about AI/tech learning. Post and deliver the result." \
+              --task "First tell me 'Starting evening challenge...' in this chat. Then check memory/pause.json — if it exists, tell me paused and stop. Otherwise: create an interactive challenge or poll for Facebook followers. Post. Finally tell me 'Challenge posted! [summary]'." \
               --deliver "telegram:5011701218" 2>/dev/null || true
 
             openclaw cron add --name comment-reply \
               --schedule "*/30 9-20 * * 1-6" \
-              --task "Check Facebook page for new unread comments and reply to them with helpful answers. Use comment-bot skill. Skip if none. Deliver a summary of what you replied." \
+              --task "Check Facebook page for new unread comments. If none, tell me 'No new comments'. If found, tell me 'Replying to X comments...' first, then reply using comment-bot skill, then tell me 'Replied to all X comments'." \
               --deliver "telegram:5011701218" 2>/dev/null || true
 
             openclaw cron add --name night-reflection \
               --schedule "0 21 * * 1-6" \
-              --task "Check memory/pause.json first - if it exists, skip. Otherwise: create a personal/behind-the-scenes style Facebook post. Share a thought, lesson learned, or daily reflection about building AI tools. Post and deliver to me." \
+              --task "First tell me 'Starting night reflection...' in this chat. Then check memory/pause.json — if it exists, tell me paused and stop. Otherwise: create a personal/behind-the-scenes style Facebook post. Post. Finally tell me 'Posted! [summary]'." \
               --deliver "telegram:5011701218" 2>/dev/null || true
 
             break

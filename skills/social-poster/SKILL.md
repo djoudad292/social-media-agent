@@ -9,6 +9,9 @@ All API keys available: FACEBOOK_ACCESS_TOKEN, PEXELS_API_KEY, GEMINI_API_KEY, M
 
 When a user sends these commands via Telegram bot, handle them as follows:
 
+### /now
+Read your current activity status. Check if you have any pending/paused tasks in memory/activity.json or any active cron job running. Tell the user what stage you're at (starting, generating, posting, done, idle).
+
 ### /post <topic>
 1. Ask the user for the topic if not provided
 2. Generate a Facebook post using content-writer skill
@@ -18,9 +21,11 @@ When a user sends these commands via Telegram bot, handle them as follows:
 
 ### /postnow <topic>
 1. Ask the user for the topic/details if not provided (tone, length, image)
-2. Generate the Facebook post using content-writer skill
-3. **Post directly to Facebook without asking for approval**
-4. Confirm to the user with a link to the post or summary
+2. Tell the user "Starting to create your post now..."
+3. Generate the Facebook post using content-writer skill
+4. Tell the user "Posting to Facebook..."
+5. **Post directly to Facebook without asking for approval**
+6. Confirm to the user with a link to the post or summary
 
 ### /reel <topic>
 1. Ask the user for the topic if not provided
