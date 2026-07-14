@@ -102,7 +102,18 @@
       "allowFrom": [
         "*"
       ],
-      "botToken": "${TELEGRAM_BOT_TOKEN}"
+      "botToken": "${TELEGRAM_BOT_TOKEN}",
+      "customCommands": [
+        { "command": "post", "description": "Create and publish a Facebook post (tell me the topic)" },
+        { "command": "reel", "description": "Generate and publish a reel with video/music" },
+        { "command": "challenge", "description": "Create an engagement challenge post" },
+        { "command": "schedule", "description": "Show today's content schedule" },
+        { "command": "pause", "description": "Pause auto-posting for 24 hours" },
+        { "command": "resume", "description": "Resume scheduled auto-posting" },
+        { "command": "status", "description": "Show bot status and today's activity" },
+        { "command": "analytics", "description": "Fetch Facebook page analytics" },
+        { "command": "idea", "description": "Generate content ideas for the week" }
+      ]
     }
   },
   "skills": {

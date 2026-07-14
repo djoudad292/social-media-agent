@@ -53,13 +53,47 @@ echo "Starting OpenClaw gateway..."
 openclaw gateway &
 GATEWAY_PID=$!
 
-# Wait for gateway to be ready before configuring channels
+# Wait for gateway to be ready
 if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
-    echo "Waiting for gateway before adding Telegram channel..."
+    echo "Waiting for gateway..."
     for i in $(seq 1 15); do
         if curl -sf "http://localhost:${PORT:-10000}/" >/dev/null 2>&1; then
-            echo "Gateway ready, adding Telegram channel..."
+            echo "Gateway ready. Configuring Telegram channel..."
             openclaw channels add --channel telegram --bot-token "$TELEGRAM_BOT_TOKEN" 2>/dev/null || true
+
+            # ── Schedule daily content jobs ──
+            echo "Setting up scheduled content cron jobs..."
+
+            openclaw cron add --name morning-post \
+              --schedule "0 9 * * 1-6" \
+              --task "Check memory/pause.json first - if it exists, skip and tell me auto-posting is paused. Otherwise: generate an educational or inspirational Facebook post about AI/tech. Use content-writer skill to write it. Check the weekly strategy plan first. Post to Facebook. Deliver a summary to me." \
+              --deliver "telegram:5011701218" 2>/dev/null || true
+
+            openclaw cron add --name midday-reel \
+              --schedule "0 12 * * 1-6" \
+              --task "Check memory/pause.json first - if it exists, skip. Otherwise: create a short engaging reel (9:16) about AI/tech using Pexels clips or AI images. Add TTS voiceover and background music. Post to Facebook. Deliver a link to me." \
+              --deliver "telegram:5011701218" 2>/dev/null || true
+
+            openclaw cron add --name afternoon-post \
+              --schedule "0 15 * * 1-6" \
+              --task "Check memory/pause.json first - if it exists, skip. Otherwise: create a trending/engagement Facebook post. Use web research to find something relevant to AI/tech. Include a question or poll to drive comments. Post and deliver summary." \
+              --deliver "telegram:5011701218" 2>/dev/null || true
+
+            openclaw cron add --name evening-challenge \
+              --schedule "0 18 * * 1-6" \
+              --task "Check memory/pause.json first - if it exists, skip. Otherwise: create an interactive challenge or poll for Facebook followers. Make it fun and engaging about AI/tech learning. Post and deliver the result." \
+              --deliver "telegram:5011701218" 2>/dev/null || true
+
+            openclaw cron add --name comment-reply \
+              --schedule "*/30 9-20 * * 1-6" \
+              --task "Check Facebook page for new unread comments and reply to them with helpful answers. Use comment-bot skill. Skip if none. Deliver a summary of what you replied." \
+              --deliver "telegram:5011701218" 2>/dev/null || true
+
+            openclaw cron add --name night-reflection \
+              --schedule "0 21 * * 1-6" \
+              --task "Check memory/pause.json first - if it exists, skip. Otherwise: create a personal/behind-the-scenes style Facebook post. Share a thought, lesson learned, or daily reflection about building AI tools. Post and deliver to me." \
+              --deliver "telegram:5011701218" 2>/dev/null || true
+
             break
         fi
         sleep 1

@@ -5,6 +5,60 @@ description: Post content to Facebook, build reels with Pexels + FFmpeg, add TTS
 
 All API keys available: FACEBOOK_ACCESS_TOKEN, PEXELS_API_KEY, GEMINI_API_KEY, MAGIC_HOUR_API_KEY, UDIO_API_KEY, REAPI_API_KEY, DUB_API_KEY, JINA_API_KEY
 
+## Telegram Commands
+
+When a user sends these commands via Telegram bot, handle them as follows:
+
+### /post <topic>
+1. Ask the user for the topic if not provided
+2. Generate a Facebook post using content-writer skill
+3. Show the user a preview and ask for approval
+4. If approved, post to Facebook using Graph API
+5. Confirm to the user with a link or summary
+
+### /reel <topic>
+1. Ask the user for the topic if not provided
+2. Generate a reel script (15s max)
+3. Use Pexels stock clips or AI images for visuals
+4. Add TTS voiceover (Azure preferred)
+5. Add background music
+6. Show preview to user and ask for approval
+7. If approved, post to Facebook
+
+### /challenge <topic>
+1. Create an interactive challenge or poll post
+2. Show preview to user
+3. Post after approval
+4. Track engagement in memory/analytics/
+
+### /schedule
+Show the user today's scheduled posts based on active cron jobs (morning-post, midday-reel, afternoon-post, evening-challenge, night-reflection). Read memory files for previous posts today.
+
+### /pause
+Disable auto-posting: set a flag in memory/pause.json with expiry 24h from now.
+Cancel any pending cron runs for today.
+
+### /resume
+Re-enable auto-posting: delete or clear memory/pause.json.
+Confirm to user that scheduling is active again.
+
+### /status
+Report today's activity: number of posts made, upcoming cron schedule, any paused state.
+
+### /analytics
+Fetch Facebook Page Insights: impressions, engaged users, followers.
+Format as a clean report and send to user.
+
+### /idea
+Search web for trending AI/tech topics, generate 5 content ideas for the week.
+Present them to the user with suggested formats (post/reel/challenge).
+
+## Important Rules
+- ALWAYS ask the user for approval before posting anything they request manually
+- For scheduled cron jobs, post automatically but notify the user after
+- If the user says "just post it" without preview, respect their preference and post directly
+- Log all posts to memory/posts/YYYY-MM-DD.json
+
 ## Facebook Post
 
 ```

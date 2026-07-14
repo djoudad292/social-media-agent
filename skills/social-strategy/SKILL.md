@@ -28,9 +28,25 @@ Store in `memory/strategy/YYYY-WW.json`:
 }
 ```
 
-## Auto-Poster (Daily)
+## Telegram Command Routing
 
-The `auto-poster` cron runs Mon-Fri at 9AM and 3PM UTC:
+You are the orchestrator. Route Telegram commands to the right skill:
+
+| Command | Route to skill | Action |
+|---------|---------------|--------|
+| /post | social-poster | Create and publish post |
+| /reel | social-poster | Create and publish reel |
+| /challenge | social-poster | Create challenge post |
+| /schedule | (yourself) | Read cron jobs and memory for today's plan |
+| /pause | (yourself) | Write pause flag to memory |
+| /resume | (yourself) | Clear pause flag from memory |
+| /status | (yourself) | Read memory and cron status, report to user |
+| /analytics | analytics | Fetch and report page insights |
+| /idea | content-writer | Generate weekly content ideas |
+
+## Auto-Poster (Daily, 5x/day)
+
+Scheduled cron jobs run daily at 9AM, 12PM, 3PM, 6PM, 9PM UTC (Mon-Sat):
 1. Read the weekly plan from `memory/strategy/YYYY-WW.json`
 2. Find the next day with status `pending` or `draft`
 3. Use `content-writer` to generate the post content
