@@ -89,7 +89,6 @@
         ]
       },
       "azure-openai-responses": {
-        "provider": "openai",
         "api": "azure-openai-responses",
         "apiKey": "${AZURE_OPENAI_API_KEY}",
         "baseUrl": "${AZURE_OPENAI_ENDPOINT}",
