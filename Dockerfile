@@ -10,6 +10,7 @@ ENV OPENCLAW_STATE_DIR=/data/openclaw \
 
 COPY deploy/openclaw.json /opt/openclaw-base/openclaw.json
 COPY AGENTS.md /opt/openclaw-base/workspace/AGENTS.md
+COPY USER.md /opt/openclaw-base/workspace/USER.md
 COPY memory/ /opt/openclaw-base/workspace/memory/
 COPY skills/ /opt/openclaw-base/workspace/skills/
 COPY deploy/entrypoint.sh /entrypoint.sh
