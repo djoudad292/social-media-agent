@@ -42,6 +42,11 @@ export OPENCLAW_NO_RESPAWN=1
 export NODE_OPTIONS="--max-old-space-size=256 --max-semi-space-size=2"
 mkdir -p /tmp/openclaw-compile-cache
 
+# Start Azure proxy (bridges OpenAI Chat format → Azure Chat Completions)
+echo "Starting Azure proxy..."
+node /opt/openclaw-base/azure-proxy.js &
+PROXY_PID=$!
+
 # Start gateway in background so we can add Telegram channel while it runs
 echo "Starting OpenClaw gateway..."
 openclaw gateway &
@@ -61,5 +66,4 @@ if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
 fi
 
 wait $GATEWAY_PID
-# Force rebuild Tue Jul 14 06:24:22 PM CET 2026
-# Nothing to see here
+kill $PROXY_PID 2>/dev/null || true

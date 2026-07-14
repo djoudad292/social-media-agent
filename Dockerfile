@@ -13,6 +13,7 @@ COPY AGENTS.md /opt/openclaw-base/workspace/AGENTS.md
 COPY memory/ /opt/openclaw-base/workspace/memory/
 COPY skills/ /opt/openclaw-base/workspace/skills/
 COPY deploy/entrypoint.sh /entrypoint.sh
+COPY deploy/azure-proxy.js /opt/openclaw-base/azure-proxy.js
 
 RUN chmod +x /entrypoint.sh
 

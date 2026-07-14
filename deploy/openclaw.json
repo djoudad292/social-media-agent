@@ -3,24 +3,11 @@
     "defaults": {
       "workspace": "/data/openclaw/workspace",
       "model": {
-        "primary": "openai/google/gemma-4-26b-a4b-it:free"
+        "primary": "openai/gpt-5-mini"
       },
       "models": {
-        "openai/google/gemma-4-26b-a4b-it:free": {
-          "alias": "Gemma 4 Free"
-        },
-        "openai/nvidia/nemotron-3-nano-30b-a3b:free": {
-          "alias": "Nemotron Free"
-        },
-        "openai/qwen/qwen3-coder:free": {
-          "alias": "Qwen Coder Free"
-        },
-        "azure-openai-responses/gpt-5-mini": {
-          "alias": "Azure GPT-5 Mini"
-        },
-        "azure-openai-responses/gpt-5-nano": {
-          "alias": "Azure GPT-5 Nano"
-        }
+        "openai/gpt-5-mini": { "alias": "GPT-5 Mini (Azure)" },
+        "openai/gpt-5-nano": { "alias": "GPT-5 Nano (Azure)" }
       }
     }
   },
@@ -55,25 +42,17 @@
   "models": {
     "providers": {
       "openai": {
-        "api": "openai-responses",
-        "apiKey": "${OPENAI_API_KEY}",
-        "baseUrl": "https://openrouter.ai/api/v1",
+        "api": "openai-completions",
+        "apiKey": "azure-proxy",
+        "baseUrl": "http://localhost:8787/v1",
         "models": [
           {
-            "id": "google/gemma-4-26b-a4b-it:free",
-            "name": "Gemma 4 Free"
+            "id": "gpt-5-mini",
+            "name": "GPT-5 Mini (Azure)"
           },
           {
-            "id": "nvidia/nemotron-3-nano-30b-a3b:free",
-            "name": "Nemotron Free"
-          },
-          {
-            "id": "qwen/qwen3-coder:free",
-            "name": "Qwen Coder Free"
-          },
-          {
-            "id": "openrouter/free",
-            "name": "OpenRouter Auto Free"
+            "id": "gpt-5-nano",
+            "name": "GPT-5 Nano (Azure)"
           }
         ]
       },
@@ -87,21 +66,6 @@
             "name": "Gemini 2.0 Flash"
           }
         ]
-      },
-      "azure-openai-responses": {
-        "api": "azure-openai-responses",
-        "apiKey": "${AZURE_OPENAI_API_KEY}",
-        "baseUrl": "${AZURE_OPENAI_ENDPOINT}",
-        "models": [
-          {
-            "id": "gpt-5-mini",
-            "name": "GPT-5 Mini (Azure)"
-          },
-          {
-            "id": "gpt-5-nano",
-            "name": "GPT-5 Nano (Azure)"
-          }
-        ]
       }
     }
   },
@@ -110,19 +74,12 @@
       "openai:default": {
         "provider": "openai",
         "mode": "api_key"
-      },
-"azure-openai-responses:default": {
-          "provider": "azure-openai-responses",
-          "mode": "api_key"
-        }
+      }
     },
     "order": {
       "openai": [
         "openai:default"
-      ],
-"azure-openai-responses": [
-          "azure-openai-responses:default"
-        ]
+      ]
     }
   },
   "tools": {
