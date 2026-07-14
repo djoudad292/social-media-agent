@@ -6,22 +6,11 @@
         "primary": "openai/google/gemini-2.0-flash-exp:free"
       },
       "models": {
-        "openai/google/gemini-2.0-flash-exp:free": {
-          "alias": "Gemini Free",
-          "description": "Fast, free, great for simple tasks and content generation"
-        },
-        "openai/microsoft/phi-3.5-mini-128k-instruct:free": {
-          "alias": "Phi Free",
-          "description": "Lightweight free model, good for quick replies"
-        },
-        "azure-openai/gpt-5-mini": {
-          "alias": "Azure GPT-5 Mini",
-          "description": "Azure OpenAI via $100 credits — use for complex reasoning, long content, strategy"
-        },
-        "azure-openai/gpt-5-nano": {
-          "alias": "Azure GPT-5 Nano",
-          "description": "Azure OpenAI cheaper tier — use for moderate tasks when free models are exhausted"
-        }
+        "openai/google/gemini-2.0-flash-exp:free": { "alias": "Gemini Free" },
+        "openai/microsoft/phi-3.5-mini-128k-instruct:free": { "alias": "Phi Free" },
+        "openai/meta-llama/llama-3.2-3b-instruct:free": { "alias": "Llama Free" },
+        "azure-openai/gpt-5-mini": { "alias": "Azure GPT-5 Mini" },
+        "azure-openai/gpt-5-nano": { "alias": "Azure GPT-5 Nano" }
       }
     }
   },
