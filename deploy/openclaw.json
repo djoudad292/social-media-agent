@@ -198,12 +198,5 @@
         }
       }
     }
-  },
-  "crons": {
-    "keep-alive": {
-      "schedule": "*/5 * * * *",
-      "task": "curl -s https://social-media-agent-ia4m.onrender.com/health > /dev/null",
-      "description": "Keep Render awake every 5 minutes"
-    }
   }
 }

@@ -61,3 +61,5 @@ if [ -n "$TELEGRAM_BOT_TOKEN" ]; then
 fi
 
 wait $GATEWAY_PID
+# Force rebuild Tue Jul 14 06:24:22 PM CET 2026
+# Nothing to see here
