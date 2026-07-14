@@ -3,7 +3,7 @@
     "defaults": {
       "workspace": "/data/openclaw/workspace",
       "model": {
-        "primary": "azure-openai-responses/gpt-5-mini"
+        "primary": "openai/google/gemma-4-26b-a4b-it:free"
       },
       "models": {
         "openai/google/gemma-4-26b-a4b-it:free": {
