@@ -27,6 +27,11 @@ Score 0-1: budget indicators, need fit, timeline, accessibility
 
 ## Email Outreach (Resend)
 
+**⚠️ WARNING — Domain Safety**
+- `cuvva.info.uk` is the **warm/safe domain** — use ONLY for newsletters, replies, and engaged leads
+- Cold outreach to new leads must use a **separate burner domain** (e.g., `djaouad-tech.com`) to protect the primary domain from spam flags
+- Always ask the user which domain to use before sending cold emails
+
 If user approves outreach, send a cold email:
 ```bash
 curl -s -X POST "https://api.resend.com/emails" \

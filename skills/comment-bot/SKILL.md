@@ -34,6 +34,25 @@ openclaw cron add --name comment-bot \
   --deliver whatsapp:+213780688125
 ```
 
+## Anti-Detection (Meta Ban Prevention)
+
+**Must follow ALL rules to avoid Facebook flagging the page as spam.**
+
+### 1. Humanized Reply Speed
+Never reply instantly. Add a random delay of 2–7 minutes before each reply:
+```bash
+# Generate random delay between 120000–420000ms (2-7 min)
+DELAY=$(( (RANDOM % 300 + 2) * 60000 ))
+sleep $((DELAY / 1000))
+```
+
+### 2. Varied Phrasing
+Instruct the LLM with this system rule:
+"Do not use standard, repetitive greeting formulas. Rotate between casual, professional, and friendly tones. Avoid using the exact same emojis in consecutive replies. Each reply must sound like a different human wrote it."
+
+### 3. Hourly Rate Limit
+Cap replies to a maximum of **15 per hour**. If more comments are pending, queue them with 5+ min spacing.
+
 ## Reply Style Guidelines
 
 - Be helpful, friendly, and professional

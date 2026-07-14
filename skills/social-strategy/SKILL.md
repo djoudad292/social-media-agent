@@ -143,3 +143,20 @@ The `weekly-analytics-review` cron (Monday 10AM UTC):
 2. Save to `memory/analytics/YYYY-MM-DD.json`
 3. Send formatted WhatsApp report to user
 4. Include recommendations for next week
+
+## Keep-Alive (Prevent Render Sleep)
+
+The Render free tier spins down after 15 min of inactivity. This causes Telegram/WhatsApp to feel dead. Run a free UptimeRobot monitor (https://uptimerobot.com) pinging the health endpoint every 10 min:
+
+```
+Monitor type: HTTP(s)
+URL: https://social-media-agent-ia4m.onrender.com/health
+Interval: 10 minutes
+```
+
+Alternatively, add a cron on Render itself:
+```bash
+openclaw cron add --name keep-alive \
+  --schedule "*/10 * * * *" \
+  --task "Ping https://social-media-agent-ia4m.onrender.com/health to keep Render awake"
+```

@@ -38,9 +38,9 @@ img = d['predictions'][0]['bytesBase64Encoded']
 open('/tmp/reel_bg.png','wb').write(__import__('base64').b64decode(img))
 print('Saved to /tmp/reel_bg.png')
 "
-# Then animate it with FFmpeg ken burns effect
+# Then animate it with FFmpeg ken burns effect (low-resource preset for Render)
 ffmpeg -loop 1 -i /tmp/reel_bg.png -t 10 -vf "scale=1080:1920,zoompan=z=zoom+0.002:x=iw/2-(iw/zoom/2):y=ih/2-(ih/zoom/2):d=250" \
-  -c:v libx264 -pix_fmt yuv420p /tmp/animated_bg.mp4 -y
+  -c:v libx264 -preset ultrafast -threads 1 -pix_fmt yuv420p /tmp/animated_bg.mp4 -y
 ```
 
 ### 2. Generate voiceover (pick the best option for your needs)
@@ -122,9 +122,10 @@ Second line of your caption text
 Final line with call to action" > /tmp/captions.srt
 
 # Assemble: crop to 9:16, scale to 1080x1920, burn subtitles, mix audio
+# Use ultrafast preset + 1 thread to avoid OOM on Render free tier
 ffmpeg -i /tmp/clip1.mp4 -i /tmp/voiceover.mp3 -i /tmp/music.wav \
   -filter_complex "[0:v]crop=ih*9/16:ih,scale=1080:1920,subtitles=/tmp/captions.srt:force_style='FontName=Arial,FontSize=28,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=3,Outline=2,Shadow=0,MarginV=60'[v];[1:a][2:a]amix=inputs=2:duration=first[a]" \
-  -map "[v]" -map "[a]" -t 15 /tmp/reel_final.mp4 -y
+  -map "[v]" -map "[a]" -c:v libx264 -preset ultrafast -threads 1 -t 15 /tmp/reel_final.mp4 -y
 ```
 
 ### 5. Post reel to Facebook
