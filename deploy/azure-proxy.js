@@ -10,7 +10,7 @@ if (!AZURE_KEY || !AZURE_ENDPOINT) {
   process.exit(1);
 }
 
-const PORT = parseInt(process.env.PROXY_PORT || '8787');
+const PORT = parseInt(process.env.PROXY_PORT || '42789');
 
 function sendJson(res, status, data) {
   res.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
@@ -94,5 +94,5 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log('Azure proxy listening on 0.0.0.0:' + PORT);
+  console.log('Azure proxy listening on 0.0.0.0:' + PORT + ' (PROXY_PORT=' + (process.env.PROXY_PORT || 'default') + ')');
 });

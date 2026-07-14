@@ -44,7 +44,7 @@
       "openai": {
         "api": "openai-completions",
         "apiKey": "azure-proxy",
-        "baseUrl": "http://localhost:8787/v1",
+        "baseUrl": "http://localhost:42789/v1",
         "models": [
           {
             "id": "gpt-5-mini",
