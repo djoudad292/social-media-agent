@@ -39,13 +39,11 @@ const server = http.createServer((req, res) => {
       const azureBody = {
         messages: body.messages,
         max_completion_tokens: body.max_completion_tokens || body.max_tokens || 1024,
-        temperature: body.temperature ?? 0.7,
         stream: !!body.stream,
       };
-      if (azureBody.stream) {
-        delete azureBody.max_tokens;
+      if (body.temperature !== undefined) {
+        azureBody.temperature = body.temperature;
       }
-
       const opts = {
         hostname: parsed.hostname,
         path: parsed.pathname + parsed.search,
