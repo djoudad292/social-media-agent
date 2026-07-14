@@ -3,7 +3,7 @@
     "defaults": {
       "workspace": "/data/openclaw/workspace",
       "model": {
-        "primary": "azure-openai/gpt-5-mini"
+        "primary": "azure-openai-responses/gpt-5-mini"
       },
       "models": {
         "openai/google/gemma-4-26b-a4b-it:free": {
@@ -15,10 +15,10 @@
         "openai/qwen/qwen3-coder:free": {
           "alias": "Qwen Coder Free"
         },
-        "azure-openai/gpt-5-mini": {
+        "azure-openai-responses/gpt-5-mini": {
           "alias": "Azure GPT-5 Mini"
         },
-        "azure-openai/gpt-5-nano": {
+        "azure-openai-responses/gpt-5-nano": {
           "alias": "Azure GPT-5 Nano"
         }
       }
@@ -88,8 +88,9 @@
           }
         ]
       },
-      "azure-openai": {
-        "api": "openai-chat",
+      "azure-openai-responses": {
+        "provider": "openai",
+        "api": "azure-openai-responses",
         "apiKey": "${AZURE_OPENAI_API_KEY}",
         "baseUrl": "${AZURE_OPENAI_ENDPOINT}",
         "models": [
@@ -111,18 +112,18 @@
         "provider": "openai",
         "mode": "api_key"
       },
-      "azure-openai:default": {
-        "provider": "azure-openai",
-        "mode": "api_key"
-      }
+"azure-openai-responses:default": {
+          "provider": "azure-openai-responses",
+          "mode": "api_key"
+        }
     },
     "order": {
       "openai": [
         "openai:default"
       ],
-      "azure-openai": [
-        "azure-openai:default"
-      ]
+"azure-openai-responses": [
+          "azure-openai-responses:default"
+        ]
     }
   },
   "tools": {
