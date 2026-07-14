@@ -49,6 +49,15 @@
         "models": [
           { "id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash" }
         ]
+      },
+      "azure-openai": {
+        "api": "openai-responses",
+        "apiKey": "${AZURE_OPENAI_API_KEY}",
+        "baseUrl": "${AZURE_OPENAI_ENDPOINT}",
+        "models": [
+          { "id": "gpt-4o-mini", "name": "GPT-4o Mini (Azure)" },
+          { "id": "gpt-4o", "name": "GPT-4o (Azure)" }
+        ]
       }
     }
   },
@@ -57,10 +66,15 @@
       "openai:default": {
         "provider": "openai",
         "mode": "api_key"
+      },
+      "azure-openai:default": {
+        "provider": "azure-openai",
+        "mode": "api_key"
       }
     },
     "order": {
-      "openai": ["openai:default"]
+      "openai": ["openai:default"],
+      "azure-openai": ["azure-openai:default"]
     }
   },
   "tools": {
