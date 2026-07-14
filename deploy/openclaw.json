@@ -101,7 +101,8 @@
       "dmPolicy": "open",
       "allowFrom": [
         "*"
-      ]
+      ],
+      "botToken": "${TELEGRAM_BOT_TOKEN}"
     }
   },
   "skills": {
