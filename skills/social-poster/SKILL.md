@@ -19,13 +19,18 @@ Read your current activity status. Check if you have any pending/paused tasks in
 4. If approved, post to Facebook using Graph API
 5. Confirm to the user with a link or summary
 
-### /postnow <topic>
-1. Ask the user for the topic/details if not provided (tone, length, image)
-2. Tell the user "Starting to create your post now..."
-3. Generate the Facebook post using content-writer skill
-4. Tell the user "Posting to Facebook..."
-5. **Post directly to Facebook without asking for approval**
-6. Confirm to the user with a link to the post or summary
+### /postnow <topic> — CRITICAL: DO NOT ASK FOR APPROVAL
+This command means **POST NOW, NO QUESTIONS**. Follow these steps EXACTLY:
+
+1. If the user already specified topic/tone/length/image in their message → skip to step 2
+2. If the user did NOT specify details → ask ONCE briefly (tone? length? image?), then use their answer
+3. Tell the user "Starting to create your post now..."
+4. Generate the Facebook post using content-writer skill
+5. Tell the user "Posting to Facebook..."
+6. POST to Facebook immediately — DO NOT ask "do you want me to publish?" or "should I post?"
+7. Confirm with a link to the post
+
+**RULE: The user chose /postnow specifically to skip approval. Never ask "do you want me to post?" for /postnow. Just post.**
 
 ### /reel <topic>
 1. Ask the user for the topic if not provided
@@ -65,7 +70,7 @@ Search web for trending AI/tech topics, generate 5 content ideas for the week.
 Present them to the user with suggested formats (post/reel/challenge).
 
 ## Important Rules
-- For `/postnow`, post directly without showing preview or asking — just do it and confirm
+- For `/postnow`: **NEVER ask for approval.** Post immediately. The user chose this command specifically so you wouldn't ask. If they provide details, use them and post. If they don't, ask once then post.
 - For `/post`, always ask for approval before publishing
 - For scheduled cron jobs, post automatically but notify the user after
 - If the user says "just post it" or similar, respect their preference and post directly
