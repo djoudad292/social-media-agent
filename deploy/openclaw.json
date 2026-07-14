@@ -3,14 +3,24 @@
     "defaults": {
       "workspace": "/data/openclaw/workspace",
       "model": {
-        "primary": "openai/google/gemini-2.0-flash-exp:free"
+        "primary": "openai/google/gemma-4-26b-a4b-it:free"
       },
       "models": {
-        "openai/google/gemini-2.0-flash-exp:free": { "alias": "Gemini Free" },
-        "openai/microsoft/phi-3.5-mini-128k-instruct:free": { "alias": "Phi Free" },
-        "openai/meta-llama/llama-3.2-3b-instruct:free": { "alias": "Llama Free" },
-        "azure-openai/gpt-5-mini": { "alias": "Azure GPT-5 Mini" },
-        "azure-openai/gpt-5-nano": { "alias": "Azure GPT-5 Nano" }
+        "openai/google/gemma-4-26b-a4b-it:free": {
+          "alias": "Gemma 4 Free"
+        },
+        "openai/nvidia/nemotron-3-nano-30b-a3b:free": {
+          "alias": "Nemotron Free"
+        },
+        "openai/qwen/qwen3-coder:free": {
+          "alias": "Qwen Coder Free"
+        },
+        "azure-openai/gpt-5-mini": {
+          "alias": "Azure GPT-5 Mini"
+        },
+        "azure-openai/gpt-5-nano": {
+          "alias": "Azure GPT-5 Nano"
+        }
       }
     }
   },
@@ -22,12 +32,20 @@
     },
     "port": 10000,
     "bind": "lan",
-    "tailscale": { "mode": "off", "resetOnExit": false },
+    "tailscale": {
+      "mode": "off",
+      "resetOnExit": false
+    },
     "nodes": {
       "denyCommands": [
-        "camera.snap", "camera.clip", "screen.record",
-        "contacts.add", "calendar.add", "reminders.add",
-        "sms.send", "sms.search"
+        "camera.snap",
+        "camera.clip",
+        "screen.record",
+        "contacts.add",
+        "calendar.add",
+        "reminders.add",
+        "sms.send",
+        "sms.search"
       ]
     }
   },
@@ -41,9 +59,22 @@
         "apiKey": "${OPENAI_API_KEY}",
         "baseUrl": "https://openrouter.ai/api/v1",
         "models": [
-          { "id": "google/gemini-2.0-flash-exp:free", "name": "Gemini 2.0 Flash Free" },
-          { "id": "microsoft/phi-3.5-mini-128k-instruct:free", "name": "Phi-3.5 Mini Free" },
-          { "id": "meta-llama/llama-3.2-3b-instruct:free", "name": "Llama 3.2 3B Free" }
+          {
+            "id": "google/gemma-4-26b-a4b-it:free",
+            "name": "Gemma 4 Free"
+          },
+          {
+            "id": "nvidia/nemotron-3-nano-30b-a3b:free",
+            "name": "Nemotron Free"
+          },
+          {
+            "id": "qwen/qwen3-coder:free",
+            "name": "Qwen Coder Free"
+          },
+          {
+            "id": "openrouter/free",
+            "name": "OpenRouter Auto Free"
+          }
         ]
       },
       "google-generative-ai": {
@@ -51,7 +82,10 @@
         "apiKey": "${GEMINI_API_KEY}",
         "baseUrl": "https://generativelanguage.googleapis.com/v1beta",
         "models": [
-          { "id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash" }
+          {
+            "id": "gemini-2.0-flash",
+            "name": "Gemini 2.0 Flash"
+          }
         ]
       },
       "azure-openai": {
@@ -59,8 +93,14 @@
         "apiKey": "${AZURE_OPENAI_API_KEY}",
         "baseUrl": "${AZURE_OPENAI_ENDPOINT}",
         "models": [
-          { "id": "gpt-5-mini", "name": "GPT-5 Mini (Azure)" },
-          { "id": "gpt-5-nano", "name": "GPT-5 Nano (Azure)" }
+          {
+            "id": "gpt-5-mini",
+            "name": "GPT-5 Mini (Azure)"
+          },
+          {
+            "id": "gpt-5-nano",
+            "name": "GPT-5 Nano (Azure)"
+          }
         ]
       }
     }
@@ -77,8 +117,12 @@
       }
     },
     "order": {
-      "openai": ["openai:default"],
-      "azure-openai": ["azure-openai:default"]
+      "openai": [
+        "openai:default"
+      ],
+      "azure-openai": [
+        "azure-openai:default"
+      ]
     }
   },
   "tools": {
@@ -86,15 +130,21 @@
   },
   "plugins": {
     "entries": {
-      "openai": { "enabled": true },
-      "telegram": { "enabled": true }
+      "openai": {
+        "enabled": true
+      },
+      "telegram": {
+        "enabled": true
+      }
     }
   },
   "channels": {
     "telegram": {
       "enabled": true,
       "dmPolicy": "open",
-      "allowFrom": ["*"]
+      "allowFrom": [
+        "*"
+      ]
     }
   },
   "skills": {
@@ -130,7 +180,9 @@
           "JINA_API_KEY": "${JINA_API_KEY}"
         }
       },
-      "analytics": { "enabled": true },
+      "analytics": {
+        "enabled": true
+      },
       "lead-hunter": {
         "enabled": true,
         "env": {
@@ -145,6 +197,13 @@
           "RESEND_API_KEY": "${RESEND_API_KEY}"
         }
       }
+    }
+  },
+  "crons": {
+    "keep-alive": {
+      "schedule": "*/5 * * * *",
+      "task": "curl -s https://social-media-agent-ia4m.onrender.com/health > /dev/null",
+      "description": "Keep Render awake every 5 minutes"
     }
   }
 }
