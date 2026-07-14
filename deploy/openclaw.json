@@ -89,7 +89,7 @@
         ]
       },
       "azure-openai": {
-        "api": "openai-responses",
+        "api": "openai-chat",
         "apiKey": "${AZURE_OPENAI_API_KEY}",
         "baseUrl": "${AZURE_OPENAI_ENDPOINT}",
         "models": [
