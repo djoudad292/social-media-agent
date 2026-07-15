@@ -1,0 +1,125 @@
+# Render Blueprint — 4-Service AI Agent System
+# Deploy this to each Render account, enable only the service you want for that account.
+# Set env vars in Render dashboard (or use env-sync.sh after deploy).
+
+services:
+
+  # ─── Account 1: Gateway (Telegram + OpenClaw + Sidecar) ───
+  - type: web
+    name: agent-gateway
+    env: docker
+    repo: https://github.com/djoudad292/social-media-agent
+    branch: main
+    dockerfilePath: ./Dockerfile.agent-system
+    buildCommand: docker build --build-arg SERVICE=gateway -t agent-gateway -f Dockerfile.agent-system .
+    healthCheckPath: /health
+    plan: free
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: OPENCLAW_GATEWAY_TOKEN
+        sync: false
+      - key: FACEBOOK_ACCESS_TOKEN
+        sync: false
+      - key: AZURE_OPENAI_API_KEY
+        sync: false
+      - key: AZURE_OPENAI_ENDPOINT
+        sync: false
+      - key: GATEWAY_URL
+        value: http://localhost:10000
+      - key: CONTENT_URL
+        value: https://agent-content.onrender.com
+      - key: MEDIA_URL
+        value: https://agent-media.onrender.com
+      - key: DATA_URL
+        value: https://agent-data.onrender.com
+
+  # ─── Account 2: Content (LLM + Research + Images) ───
+  - type: web
+    name: agent-content
+    env: docker
+    repo: https://github.com/djoudad292/social-media-agent
+    branch: main
+    dockerfilePath: ./Dockerfile.agent-system
+    buildCommand: docker build --build-arg SERVICE=content -t agent-content -f Dockerfile.agent-system .
+    healthCheckPath: /health
+    plan: free
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: AZURE_OPENAI_API_KEY
+        sync: false
+      - key: AZURE_OPENAI_ENDPOINT
+        sync: false
+      - key: JINA_API_KEY
+        sync: false
+      - key: FREENEWS_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+
+  # ─── Account 3: Media (Reels + TTS + FFmpeg) ───
+  - type: web
+    name: agent-media
+    env: docker
+    repo: https://github.com/djoudad292/social-media-agent
+    branch: main
+    dockerfilePath: ./Dockerfile.agent-system
+    buildCommand: docker build --build-arg SERVICE=media -t agent-media -f Dockerfile.agent-system .
+    healthCheckPath: /health
+    plan: free
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: AZURE_OPENAI_API_KEY
+        sync: false
+      - key: AZURE_OPENAI_ENDPOINT
+        sync: false
+      - key: AZURE_SPEECH_KEY
+        sync: false
+      - key: AZURE_SPEECH_REGION
+        sync: false
+      - key: PEXELS_API_KEY
+        sync: false
+
+  # ─── Account 4: Data (Scraper + Analytics + Leads + FB Post) ───
+  - type: web
+    name: agent-data
+    env: docker
+    repo: https://github.com/djoudad292/social-media-agent
+    branch: main
+    dockerfilePath: ./Dockerfile.agent-system
+    buildCommand: docker build --build-arg SERVICE=data -t agent-data -f Dockerfile.agent-system .
+    healthCheckPath: /health
+    plan: free
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: AZURE_OPENAI_API_KEY
+        sync: false
+      - key: AZURE_OPENAI_ENDPOINT
+        sync: false
+      - key: FACEBOOK_ACCESS_TOKEN
+        sync: false
+      - key: FACEBOOK_PAGE_ID
+        sync: false
+      - key: JINA_API_KEY
+        sync: false
