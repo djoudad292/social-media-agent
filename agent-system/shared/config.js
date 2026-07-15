@@ -7,7 +7,7 @@ const config = {
     url: process.env.REDIS_URL || 'redis://default:cELvQv3bb7nHh5hPsDUDNdSQFbQNd9Cp@voice-glistening-teeth-80708.db.redis.io:11059',
   },
   azure: {
-    apiKey: process.env.AZURE_OPENAI_API_KEY || (()=>{try{return require('fs').readFileSync('/etc/secrets/azure-key.txt','utf8').trim()}catch{return ''}})(),
+    apiKey: process.env.AZURE_OPENAI_API_KEY,
     endpoint: process.env.AZURE_OPENAI_ENDPOINT || 'https://openclaw-ai2-5c86d.openai.azure.com',
     apiVersion: process.env.AZURE_OPENAI_API_VERSION || '2025-01-01-preview',
     gpt5Mini: process.env.AZURE_GPT5_MINI_DEPLOYMENT || 'gpt-5-mini',
