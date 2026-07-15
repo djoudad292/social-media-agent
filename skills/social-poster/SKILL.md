@@ -31,7 +31,8 @@ Follow these steps EXACTLY without deviation:
 4. Generate ONE post (your best guess). Do not show multiple options.
 5. Say "Posting to Facebook..."
 6. **POST TO FACEBOOK IMMEDIATELY.** Run: `bash /data/openclaw/workspace/post-to-facebook.sh "your post text here"`. Do NOT construct curl. Do NOT ask for tokens. Just run the script.
-7. Say "Done! [link from script output]"
+7. The script will print `SUCCESS! Posted: https://facebook.com/...` or `FAILED: ...`. Report this result to the user IMMEDIATELY.
+8. **If you don't see the result**, read `/tmp/post-to-facebook-result.txt` which always contains the last run result.<!--CRITICAL: Always report the script result. If you lost it, check the log file.-->
 
 **CRITICAL RULES:**
 - Do NOT ask "which platform?" — we only post to Facebook.
@@ -92,6 +93,8 @@ The helper script at `/data/openclaw/workspace/post-to-facebook.sh` handles post
 ```bash
 bash /data/openclaw/workspace/post-to-facebook.sh "Your message here"
 ```
+
+**If you don't see the script output**, read `/tmp/post-to-facebook-result.txt` — it contains the last result.
 
 ## Reel Generation (9:16)
 
