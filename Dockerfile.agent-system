@@ -1,4 +1,4 @@
-# Build with: docker build --build-arg SERVICE=gateway -t agent-gateway -f Dockerfile.agent-system .
+# Build with: docker build --build-arg SERVICE=gateway --target gateway -t agent-gateway -f Dockerfile.agent-system .
 # SERVICES: gateway, content, media, data
 ARG SERVICE=gateway
 

@@ -23,6 +23,6 @@ Each service pings Redis every 60s (heartbeat). All tracked via `/api/status`.
 
 On Render, set:
 - Dockerfile Path → `Dockerfile.agent-system`
-- Build Command → `docker build --build-arg SERVICE=gateway -t agent-gateway -f Dockerfile.agent-system .` (adjust SERVICE per account)
+- Build Command → `docker build --build-arg SERVICE=gateway --target gateway -t agent-gateway -f Dockerfile.agent-system .` (adjust SERVICE and --target per account)
 
 Or run `bash agent-system/env-sync.sh` to auto-deploy all 4 services and set env vars.
