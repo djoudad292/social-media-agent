@@ -86,8 +86,8 @@ app.post('/api/facebook/post',async(req,res)=>{try{
   else res.status(500).json({error:'Facebook error',raw:d});
 }catch(e){res.status(500).json({error:e.message})}});
 
-// Auto-scrape every 2h
-setInterval(async()=>{try{const fetch=(await import('node-fetch')).default;const r=await fetch('https://www.reddit.com/r/technology/hot.json?limit=5',{headers:{'User-Agent':'AgentSystem/1.0'}});const d=await r.json();const t=(d?.data?.children||[]).map(c=>({source:'reddit',title:c.data.title,url:`https://reddit.com${c.data.permalink}`,score:c.data.score}));if(t.length)await db.saveTrending(t);}catch{}},7200000);
+// Auto-scrape every 2h (calls the full scrape endpoint on itself)
+setInterval(async()=>{try{const fetch=(await import('node-fetch')).default;const r=await fetch(`http://localhost:${PORT}/data/scrape`,{method:'POST',timeout:60000});if(r.ok)console.log('Auto-scrape OK');}catch(e){console.error('Auto-scrape failed:',e.message)}},7200000);
 
 async function start(){await redis.connect().catch(()=>{});setInterval(()=>redis.heartbeat('data'),60000);app.listen(PORT,'0.0.0.0',()=>console.log(`Data service on ${PORT}`));}
 start();

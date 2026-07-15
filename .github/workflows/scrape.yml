@@ -1,0 +1,11 @@
+name: Scheduled Scrape
+on:
+  schedule:
+    - cron: '0 */2 * * *'
+  workflow_dispatch:
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger full scrape on data service
+        run: curl -s -X POST -H "Content-Type: application/json" -d '{}' --max-time 60 "https://agent-data-1qw0.onrender.com/api/data/scrape"
