@@ -5,8 +5,8 @@ const db=require(path.join(__dirname,'..','..','shared','db'));
 const redis=require(path.join(__dirname,'..','..','shared','redis'));
 const azure=require(path.join(__dirname,'..','..','shared','azure-proxy'));
 const PORT=process.env.PORT||3003;
-app.use((req,res,next)=>{const t=req.headers['x-agent-token'];if(config.gatewayToken&&t!==config.gatewayToken)return res.status(401).json({error:'Unauthorized'});next();});
 app.get('/health',(req,res)=>res.json({ok:true,service:'data'}));
+app.use((req,res,next)=>{if(req.path==='/health')return next();const t=req.headers['x-agent-token'];if(config.gatewayToken&&t!==config.gatewayToken)return res.status(401).json({error:'Unauthorized'});next();});
 
 // Data routes
 

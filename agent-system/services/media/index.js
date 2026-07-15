@@ -5,8 +5,8 @@ const redis=require(path.join(__dirname,'..','..','shared','redis'));
 const azure=require(path.join(__dirname,'..','..','shared','azure-proxy'));
 const PORT=process.env.PORT||3002;
 const TMP='/tmp/agent-media';if(!fs.existsSync(TMP))fs.mkdirSync(TMP,{recursive:true});
-app.use((req,res,next)=>{const t=req.headers['x-agent-token'];if(config.gatewayToken&&t!==config.gatewayToken)return res.status(401).json({error:'Unauthorized'});next();});
 app.get('/health',(req,res)=>res.json({ok:true,service:'media'}));
+app.use((req,res,next)=>{if(req.path==='/health')return next();const t=req.headers['x-agent-token'];if(config.gatewayToken&&t!==config.gatewayToken)return res.status(401).json({error:'Unauthorized'});next();});
 app.post('/media/reel',async(req,res)=>{try{
   const{script,topic}=req.body;if(!script)return res.status(400).json({error:'Script required'});
   const fetch=(await import('node-fetch')).default;
