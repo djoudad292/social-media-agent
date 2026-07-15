@@ -1,0 +1,9 @@
+FROM node:22-alpine
+RUN apk add --no-cache curl ca-certificates
+WORKDIR /app
+COPY agent-system/package.json /app/
+COPY agent-system/shared/ /app/shared/
+COPY agent-system/services/content/ /app/services/content/
+RUN npm install --production
+EXPOSE 3001
+CMD ["node","services/content/index.js"]
