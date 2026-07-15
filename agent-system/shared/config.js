@@ -29,10 +29,10 @@ const config = {
 };
 
 config.services = {
-  gateway: process.env.GATEWAY_URL || 'http://localhost:10000',
-  content: process.env.CONTENT_URL || 'http://content:3001',
-  media: process.env.MEDIA_URL || 'http://media:3002',
-  data: process.env.DATA_URL || 'http://data:3003',
+  gateway: process.env.GATEWAY_URL,
+  content: process.env.CONTENT_URL,
+  media: process.env.MEDIA_URL,
+  data: process.env.DATA_URL,
 };
 
 module.exports = config;

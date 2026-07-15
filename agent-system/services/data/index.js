@@ -8,7 +8,8 @@ const PORT=process.env.PORT||3003;
 app.use((req,res,next)=>{const t=req.headers['x-agent-token'];if(config.gatewayToken&&t!==config.gatewayToken)return res.status(401).json({error:'Unauthorized'});next();});
 app.get('/health',(req,res)=>res.json({ok:true,service:'data'}));
 
-// Scrape Reddit + HN
+// Data routes
+
 app.post('/data/scrape',async(req,res)=>{try{
   const fetch=(await import('node-fetch')).default;const trends=[];
   const rr=await fetch('https://www.reddit.com/r/technology/hot.json?limit=10',{headers:{'User-Agent':'AgentSystem/1.0'}});
@@ -19,7 +20,6 @@ app.post('/data/scrape',async(req,res)=>{try{
   res.json({trends_count:trends.length,trends});
 }catch(e){res.status(500).json({error:e.message})}});
 
-// Facebook Analytics
 app.post('/data/analytics',async(req,res)=>{try{
   const fetch=(await import('node-fetch')).default;
   const r=await fetch(`https://graph.facebook.com/v21.0/${config.facebook.pageId}/insights?metric=page_impressions,page_engaged_users,page_fans&period=days_28&access_token=${config.facebook.accessToken}`);
@@ -27,7 +27,6 @@ app.post('/data/analytics',async(req,res)=>{try{
   else res.status(500).json({error:'Facebook API error',raw:d});
 }catch(e){res.status(500).json({error:e.message})}});
 
-// Hunt leads
 app.post('/data/leads/hunt',async(req,res)=>{try{
   const fetch=(await import('node-fetch')).default;
   const q=req.body.niche||'startups hiring AI developers 2026';
@@ -39,7 +38,6 @@ app.post('/data/leads/hunt',async(req,res)=>{try{
   res.json({leads:saved.length?saved:leads});
 }catch(e){res.status(500).json({error:e.message})}});
 
-// Generate weekly strategy
 app.post('/data/strategy',async(req,res)=>{try{
   const week=req.body.week||(()=>{const n=new Date();return `${n.getFullYear()}-W${String(Math.ceil(((n-new Date(n.getFullYear(),0,1))/86400000+(new Date(n.getFullYear(),0,1).getDay()+1))/7)).padStart(2,'0')}`})();
   const pt=await azure.generateContent('Create a 7-day content plan for tech page "djaouad tech". Mix: 40% educational, 20% engaging, 20% social proof, 10% promotional, 10% personal. JSON array: day, type(post/reel/challenge), topic, description.',{maxTokens:1500});
@@ -47,18 +45,43 @@ app.post('/data/strategy',async(req,res)=>{try{
   await db.saveStrategy(week,plan);res.json({week,plan});
 }catch(e){res.status(500).json({error:e.message})}});
 
-// Memory endpoints
 app.get('/data/memory/:type',async(req,res)=>{try{
   const{type}=req.params;const{limit,days}=req.query;
   const m={posts:()=>days?db.getRecentPosts(parseInt(days)||7):db.getPosts(parseInt(limit)||20),analytics:()=>db.getAnalytics(parseInt(days)||28),trending:()=>db.getLatestTrends(parseInt(limit)||20),pause:()=>db.getPauseState()};
   if(m[type])res.json(await m[type]());else res.status(400).json({error:'Unknown type'});
 }catch(e){res.status(500).json({error:e.message})}});
 
-// Post to Facebook
 app.post('/data/facebook/post',async(req,res)=>{try{
   const{message}=req.body;if(!message)return res.status(400).json({error:'Message required'});
   const fetch=(await import('node-fetch')).default;
   const r=await fetch(`https://graph.facebook.com/v21.0/me/feed`,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({access_token:config.facebook.accessToken,message}).toString()});
+  const d=await r.json();if(d.id){await db.savePost({content:message,type:'post',status:'posted',facebook_post_id:d.id});res.json({success:true,post_url:`https://facebook.com/${d.id}`});}
+  else res.status(500).json({error:'Facebook error',raw:d});
+}catch(e){res.status(500).json({error:e.message})}});
+
+// Gateway sidecar routes (merged into data service)
+
+let fetch;
+async function getFetch(){if(!fetch)fetch=(await import('node-fetch')).default;return fetch;}
+async function proxyCall(u,b=null,m='GET'){try{const f=await getFetch();const o={method:m,headers:{'Content-Type':'application/json','x-agent-token':config.gatewayToken||''},timeout:60000};if(b)o.body=JSON.stringify(b);const r=await f(u,o);return await r.json();}catch(e){return{error:e.message,unreachable:true}}}
+
+app.get('/api/status',async(req,res)=>{const h=await redis.getHeartbeats();const s={};for(const[n,u]of Object.entries(config.services)){try{const f=await getFetch();const r=await f(`${u}/health`,{timeout:5000});s[n]=r.ok?'alive':'error'}catch{s[n]='down'}}res.json({services:s,heartbeats:h})});
+
+const proxyRoutes={
+  'content/generate':['POST','content'],'content/research':['POST','content'],
+  'media/reel':['POST','media'],'media/tts':['POST','media'],
+  'data/scrape':['POST','data'],'data/analytics':['POST','data'],'data/leads/hunt':['POST','data'],'data/strategy':['POST','data'],'data/facebook/post':['POST','data'],
+  'memory/posts':['GET','data','posts'],'memory/analytics':['GET','data','analytics'],'memory/trending':['GET','data','trending'],'memory/pause':['GET','data','pause'],
+};
+for(const[route,[method,svc,...extra]]of Object.entries(proxyRoutes)){
+  if(method==='POST')app.post(`/api/${route}`,async(req,res)=>{res.json(await proxyCall(`${config.services[svc]}/${route}`,req.body,'POST'))});
+  else if(method==='GET')app.get(`/api/${route}`,async(req,res)=>{res.json(await proxyCall(`${config.services[svc]}/${route}?${new URLSearchParams(req.query)}`))});
+}
+
+app.post('/api/facebook/post',async(req,res)=>{try{
+  const{message}=req.body;if(!message)return res.status(400).json({error:'Message required'});
+  const f=await getFetch();
+  const r=await f(`https://graph.facebook.com/v21.0/me/feed`,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({access_token:config.facebook.accessToken,message}).toString()});
   const d=await r.json();if(d.id){await db.savePost({content:message,type:'post',status:'posted',facebook_post_id:d.id});res.json({success:true,post_url:`https://facebook.com/${d.id}`});}
   else res.status(500).json({error:'Facebook error',raw:d});
 }catch(e){res.status(500).json({error:e.message})}});
