@@ -51,6 +51,27 @@ app.get('/data/memory/:type',async(req,res)=>{try{
   if(m[type])res.json(await m[type]());else res.status(400).json({error:'Unknown type'});
 }catch(e){res.status(500).json({error:e.message})}});
 
+// Content generation direct (bypass stuck content service)
+app.post('/api/content/generate',async(req,res)=>{try{
+  const {topic,type,tone}=req.body;
+  const prompts={post:`Write a ${tone||'casual'} Facebook post about: ${topic}. Under 200 words. 3-5 hashtags + CTA.`,reel:`Write a 15s reel script about: ${topic}. Visual cues + CTA.`,thread:`Write 3-5 post thread about: ${topic}.`,idea:`Generate 5 content ideas about ${topic||'AI/tech'} for a tech page.`};
+  const content=await azure.generateContent(prompts[type]||prompts.post,{systemPrompt:'Tech content creator. Direct, engaging, no filler.'});
+  res.json({content,topic,type});
+}catch(e){res.status(500).json({error:e.message})}});
+app.post('/api/content/research',async(req,res)=>{try{
+  const fetch=(await import('node-fetch')).default;
+  const {query}=req.body;let results=[];
+  const nr=await fetch(`https://freenewsapi.com/api/v1/news?q=${encodeURIComponent(query||'AI tech')}&apiKey=${config.freenews.key}`);
+  const nd=await nr.json();
+  if(nd?.articles)results.push(...nd.articles.slice(0,5).map(a=>({title:a.title,url:a.url,source:'news',summary:a.description})));
+  const wr=await fetch(`https://r.jina.ai/${encodeURIComponent(query||'trending AI tools 2026')}`,{headers:{Authorization:`Bearer ${config.jina.key}`}});
+  const wt=await wr.text();
+  const summary=await azure.generateContent(`Summarize: ${wt.substring(0,3000)}`,{maxTokens:500});
+  results.push({title:'Web Research',summary,source:'web'});
+  if(results.length)await db.saveTrending(results.filter(r=>r.title));
+  res.json({results});
+}catch(e){res.status(500).json({error:e.message})}});
+
 app.post('/data/facebook/post',async(req,res)=>{try{
   const{message}=req.body;if(!message)return res.status(400).json({error:'Message required'});
   const fetch=(await import('node-fetch')).default;
@@ -68,7 +89,6 @@ async function proxyCall(u,b=null,m='GET'){try{const f=await getFetch();const o=
 app.get('/api/status',async(req,res)=>{const h=await redis.getHeartbeats();const s={};for(const[n,u]of Object.entries(config.services)){try{const f=await getFetch();const r=await f(`${u}/health`,{timeout:5000});s[n]=r.ok?'alive':'error'}catch{s[n]='down'}}res.json({services:s,heartbeats:h})});
 
 const proxyRoutes={
-  'content/generate':['POST','content'],'content/research':['POST','content'],
   'media/reel':['POST','media'],'media/tts':['POST','media'],
   'data/scrape':['POST','data'],'data/analytics':['POST','data'],'data/leads/hunt':['POST','data'],'data/strategy':['POST','data'],'data/facebook/post':['POST','data'],
   'memory/posts':['GET','data','posts'],'memory/analytics':['GET','data','analytics'],'memory/trending':['GET','data','trending'],'memory/pause':['GET','data','pause'],
