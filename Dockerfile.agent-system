@@ -12,7 +12,7 @@ COPY agent-system/services/gateway/package.json /app/services/gateway/
 COPY agent-system/services/content/package.json /app/services/content/
 COPY agent-system/services/media/package.json /app/services/media/
 COPY agent-system/services/data/package.json /app/services/data/
-RUN npm install --production 2>/dev/null || true
+RUN npm install --production 2>&1
 
 # ─── Gateway (Account 1) ───
 FROM base AS gateway
