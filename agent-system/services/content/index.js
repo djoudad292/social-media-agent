@@ -18,7 +18,7 @@ app.post('/content/research',async(req,res)=>{try{
   const fetch=(await import('node-fetch')).default;
   const {query}=req.body;
   let results=[];
-  const nr=await fetch(`https://freenewsapi.com/api/v1/news?q=${encodeURIComponent(query||'AI tech')}&apiKey=${config.freenews.key}`);
+  const nr=await fetch(`https://freenewsapi.io/api/v1/news?q=${encodeURIComponent(query||'AI tech')}&apiKey=${config.freenews.key}`);
   const nd=await nr.json();
   if(nd?.articles)results.push(...nd.articles.slice(0,5).map(a=>({title:a.title,url:a.url,source:'news',summary:a.description})));
   const wr=await fetch(`https://r.jina.ai/${encodeURIComponent(query||'trending AI tools 2026')}`,{headers:{Authorization:`Bearer ${config.jina.key}`}});
