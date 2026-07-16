@@ -452,6 +452,7 @@ app.post('/api/reel/post',async(req,res)=>{try{
     const r=https.request('https://graph.facebook.com/v21.0/me/videos',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Content-Length':Buffer.byteLength(body)}},resp=>{let d='';resp.on('data',c=>d+=c);resp.on('end',()=>{try{resolve(JSON.parse(d))}catch(e){resolve({parseError:e.message})}});});
     r.on('error',e=>resolve({netError:e.message}));r.setTimeout(30000,()=>{r.destroy();resolve({timeout:true})});r.write(body);r.end();
   });
+  console.log(`[reel] content length: ${content?.length}, fbRes: ${JSON.stringify(fbRes).substring(0,200)}`);
   if(fbRes.id){try{await db.savePost({content,topic,type:'reel',status:'posted',facebook_post_id:fbRes.id});}catch{}res.json({success:true,reel_url:`https://facebook.com/${fbRes.id}`,caption:content});}
   else res.json({error:'Facebook video error',raw:fbRes,video_url:vu});
 }catch(e){res.json({error:e.message})}});
