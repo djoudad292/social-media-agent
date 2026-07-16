@@ -97,4 +97,64 @@ async function queueStats() {
   } catch { return { scheduled: 0, posted: 0, failed: 0, total: 0, by_platform: {} }; }
 }
 
-module.exports = { supabase, savePost, getPosts, getRecentPosts, saveTrending, getLatestTrends, saveAnalytics, getAnalytics, getPauseState, setPauseState, saveLead, saveStrategy, addToQueue, getQueue, getDueItems, markPosted, removeFromQueue, queueStats };
+// ====== Direct PostgreSQL for table creation ======
+const { Client } = require('pg');
+
+async function initDatabase() {
+  const dbPassword = process.env.SUPABASE_DATABASE_PASSWORD;
+  if (!dbPassword) {
+    console.warn('SUPABASE_DATABASE_PASSWORD not set, tables won\'t be auto-created');
+    return;
+  }
+  const ref = (config.supabase.url || '').replace('https://', '').split('.')[0];
+  if (!ref) { console.warn('Cannot derive project ref from SUPABASE_URL'); return; }
+  const connStr = `postgresql://postgres:${encodeURIComponent(dbPassword)}@db.${ref}.supabase.co:5432/postgres`;
+  const client = new Client({ connectionString: connStr, ssl: { rejectUnauthorized: false } });
+  try {
+    await client.connect();
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS content_queue (
+        id SERIAL PRIMARY KEY, content TEXT, topic TEXT, type TEXT DEFAULT 'post',
+        platform TEXT DEFAULT 'facebook', status TEXT DEFAULT 'scheduled',
+        scheduled_for TIMESTAMPTZ NOT NULL, tone TEXT DEFAULT 'casual',
+        metadata JSONB DEFAULT '{}', posted_at TIMESTAMPTZ, result JSONB,
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS posts (
+        id SERIAL PRIMARY KEY, content TEXT, type TEXT DEFAULT 'post', status TEXT,
+        facebook_post_id TEXT, created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS pause_state (
+        id INTEGER PRIMARY KEY DEFAULT 1, paused BOOLEAN DEFAULT false,
+        expires_at TIMESTAMPTZ, updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS trending_topics (
+        id SERIAL PRIMARY KEY, source TEXT, title TEXT, url TEXT, score REAL,
+        summary TEXT, fetched_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS analytics (
+        id SERIAL PRIMARY KEY, date DATE UNIQUE, impressions INTEGER DEFAULT 0,
+        engaged_users INTEGER DEFAULT 0, followers INTEGER DEFAULT 0,
+        raw_data JSONB, created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS leads (
+        id SERIAL PRIMARY KEY, company TEXT, contact TEXT, email TEXT,
+        score REAL DEFAULT 0, source TEXT, notes TEXT, status TEXT DEFAULT 'new',
+        created_at TIMESTAMPTZ DEFAULT NOW()
+      );
+      CREATE TABLE IF NOT EXISTS strategy (
+        id SERIAL PRIMARY KEY, week TEXT UNIQUE, plan JSONB,
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      );
+    `);
+    console.log('Database tables initialized successfully');
+    // Insert default pause_state row if not exists
+    await client.query(`INSERT INTO pause_state (id, paused) VALUES (1, false) ON CONFLICT (id) DO NOTHING`);
+    await client.end();
+  } catch (e) {
+    console.error('Database init error:', e.message);
+    try { await client.end(); } catch {}
+  }
+}
+
+module.exports = { supabase, savePost, getPosts, getRecentPosts, saveTrending, getLatestTrends, saveAnalytics, getAnalytics, getPauseState, setPauseState, saveLead, saveStrategy, addToQueue, getQueue, getDueItems, markPosted, removeFromQueue, queueStats, initDatabase };
