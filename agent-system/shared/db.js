@@ -150,6 +150,8 @@ async function initDatabase() {
     console.log('Database tables initialized successfully');
     // Insert default pause_state row if not exists
     await client.query(`INSERT INTO pause_state (id, paused) VALUES (1, false) ON CONFLICT (id) DO NOTHING`);
+    // Reload PostgREST schema cache so it can see the new tables
+    await client.query(`NOTIFY pgrst, 'reload schema'`);
     await client.end();
   } catch (e) {
     console.error('Database init error:', e.message);
