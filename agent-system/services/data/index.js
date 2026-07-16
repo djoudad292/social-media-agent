@@ -431,6 +431,6 @@ setInterval(async()=>{try{const fetch=(await import('node-fetch')).default;const
 // Auto-tick every 15 minutes (process due queue items)
 setInterval(async()=>{try{const fetch=(await import('node-fetch')).default;await fetch(`http://localhost:${PORT}/api/scheduler/tick`,{method:'POST',timeout:60000});}catch(e){console.error('Auto-tick failed:',e.message)}},900000);
 
-async function start(){await redis.connect().catch(()=>{});setInterval(()=>redis.heartbeat('data'),60000);await db.initDatabase().catch(()=>{});app.listen(PORT,'0.0.0.0',()=>console.log(`Data service on ${PORT}`));}
+async function start(){await redis.connect().catch(()=>{});setInterval(()=>redis.heartbeat('data'),60000);await db.initDatabase().catch(()=>{});if(!autoPilotInterval){autoPilotInterval=setInterval(autoPilotCycle,AUTOPILOT_INTERVAL);setTimeout(autoPilotCycle,5000);}app.listen(PORT,'0.0.0.0',()=>console.log(`Data service on ${PORT}`));}
 start();
 // v2 - telegram bot
