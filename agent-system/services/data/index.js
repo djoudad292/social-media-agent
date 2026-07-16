@@ -99,6 +99,45 @@ app.post('/api/content/research',async(req,res)=>{try{
   res.json({results});
 }catch(e){res.status(500).json({error:e.message})}});
 
+// ====== Custom content writer (no template, full control) ======
+app.post('/api/content/write',async(req,res)=>{try{
+  const{prompt,systemPrompt,maxTokens}=req.body;
+  if(!prompt)return res.status(400).json({error:'prompt required'});
+  const content=await azure.generateContent(prompt,{systemPrompt:systemPrompt||'Tech content creator. Direct, engaging, no filler.',maxTokens:parseInt(maxTokens)||1024});
+  res.json({content});
+}catch(e){res.status(500).json({error:e.message})}});
+
+// ====== Research → Write pipeline ======
+app.post('/api/content/researched',async(req,res)=>{try{
+  const fetch=(await import('node-fetch')).default;
+  const{query,tone}=req.body;const q=query||'trending AI technology 2026';
+  const nr=await fetch(`https://newsapi.org/v2/everything?q=${encodeURIComponent(q)}&apiKey=${config.freenews.key}&pageSize=5`);
+  const nd=await nr.json();const articles=(nd?.articles||[]).slice(0,5);
+  const wr=await fetch(`https://s.jina.ai/${encodeURIComponent(q)}`,{headers:{Authorization:`Bearer ${config.jina.key}`}});
+  const wt=await wr.text();
+  const sources=[...articles.map(a=>`- ${a.title}: ${a.description||'(no summary)'}`),`- Web research: ${wt.substring(0,1000)}`].join('\n');
+  const content=await azure.generateContent(`Write a genuine, evidence-based Facebook post about: ${q}\n\nUse these real sources to write something substantive (200-400 words):\n${sources}\n\nInclude 3-5 relevant hashtags and end with a CTA. Focus on real examples, avoid hype.`,{systemPrompt:'Tech writer. Evidence-based, conversational, no buzzwords.',maxTokens:1200});
+  res.json({content,sources:articles.map(a=>({title:a.title,url:a.url}))});
+}catch(e){res.status(500).json({error:e.message})}});
+
+// ====== Facebook Thread ======
+app.post('/api/facebook/thread',async(req,res)=>{try{
+  const{topic,count:c}=req.body;const count=Math.min(Math.max(c||3,2),5);
+  const raw=await azure.generateContent(`Write ${count} connected Facebook posts about: ${topic||'AI tech trends'}. Each post 2-4 sentences. First introduces the topic, last ends with CTA. They should read as a connected thread. Return as JSON array of strings.`,{systemPrompt:'Tech writer. Thread specialist.',maxTokens:1500});
+  let posts=[];try{const m=raw.match(/\[[\s\S]*?\]/s);if(m)posts=JSON.parse(m[0]);}catch{}
+  if(!posts.length)posts=raw.split(/\n\s*(?=\d+\/|\*\*?\d+)/).filter(p=>p.trim().length>20).slice(0,count);
+  const https=require('https');const qs=require('querystring');const token=config.facebook.accessToken||'';const results=[];
+  for(let i=0;i<Math.min(posts.length,count);i++){
+    const msg=`${posts[i].trim()}\n\n${i+1}/${Math.min(posts.length,count)}`;
+    const body=qs.stringify({access_token:token,message:msg});
+    const fbRes=await new Promise(resolve=>{const r=https.request('https://graph.facebook.com/v21.0/me/feed',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Content-Length':Buffer.byteLength(body)}},resp=>{let d='';resp.on('data',c=>d+=c);resp.on('end',()=>{try{resolve(JSON.parse(d))}catch(e){resolve({parseError:e.message})}});});r.on('error',e=>resolve({netError:e.message}));r.setTimeout(15000,()=>{r.destroy();resolve({timeout:true})});r.write(body);r.end();});
+    results.push({part:i+1,id:fbRes.id,url:fbRes.id?`https://facebook.com/${fbRes.id}`:null});
+    if(i<posts.length-1)await new Promise(r=>setTimeout(r,2000));
+  }
+  try{if(results.some(r=>r.id))await db.savePost({content:`Thread (${count} parts) about: ${topic}`,type:'thread',status:'posted',facebook_post_id:results[0].id});}catch{}
+  res.json({success:results.some(r=>r.id),count:results.length,results,posts});
+}catch(e){res.json({error:e.message})}});
+
 app.post('/data/facebook/post',async(req,res)=>{try{
   const{message}=req.body;if(!message)return res.status(400).json({error:'Message required'});
   const fetch=(await import('node-fetch')).default;
@@ -383,27 +422,39 @@ async function autoPilotCycle(){
   try{
     const pause=await db.getPauseState();
     if(pause.paused&&(!pause.expires_at||new Date(pause.expires_at)>new Date()))return;
-    // Check if we have a strategy for this week
+    // Fetch real trends first
+    const fetch=(await import('node-fetch')).default;
+    try{const rr=await fetch(`http://localhost:${PORT}/data/scrape`,{method:'POST',timeout:30000});}catch{}
+    const trending=await db.getLatestTrends(10);
+    const trendTopics=trending.map(t=>t.title).filter(Boolean);
     const now=new Date();const week=`${now.getFullYear()}-W${String(Math.ceil(((now-new Date(now.getFullYear(),0,1))/86400000+(new Date(now.getFullYear(),0,1).getDay()+1))/7)).padStart(2,'0')}`;
     let strategy=await db.getStrategy(week);
     if(!strategy){
-      const pt=await azure.generateContent('Create a 7-day content plan for tech page "djaouad tech". Mix: education 40%, engagement 20%, social proof 20%, promo 10%, personal 10%. JSON array: day, type(post/reel/challenge), topic, description.',{maxTokens:1500});
-      let plan=[];try{const m=pt.match(/\[[\s\S]*?\]/s);if(m)plan=JSON.parse(m[0]);}catch{plan=[{day:1,type:'post',topic:'AI trends',description:'Top AI trends'}]}
+      const trendContext=trendTopics.length?`\nTrending topics right now:\n${trendTopics.map(t=>`- ${t}`).join('\n')}`:'';
+      const pt=await azure.generateContent(`Create a 7-day content plan for tech page "djaouad tech" based on these current trends:${trendContext}\n\nMix: education 40%, engagement 20%, social proof 20%, promo 10%, personal 10%. Each item must reference a real trend or news topic. JSON array: day, type(post/reel/thread), topic, description.`,{maxTokens:1500});
+      let plan=[];try{const m=pt.match(/\[[\s\S]*?\]/s);if(m)plan=JSON.parse(m[0]);}catch{plan=(trendTopics.slice(0,7).map((t,i)=>({day:i+1,type:'post',topic:t,description:'Post about this trend'})));}
       await db.saveStrategy(week,plan);
       strategy=await db.getStrategy(week);
     }
     if(!strategy||!strategy.plan)return;
     const queue=await db.getQueue({status:'scheduled',limit:20});
-    if(queue.length>=5)return; // enough queued
-    const trending=await db.getLatestTrends(5);
-    const trendTopics=trending.map(t=>t.title).filter(Boolean);
+    if(queue.length>=5)return;
     for(const day of strategy.plan.slice(0,7)){
       const topic=day.topic||(trendTopics.length?trendTopics[Math.floor(Math.random()*trendTopics.length)]:'AI tech');
-      // Schedule for 2-6 hours from now (spread throughout day)
+      // Research and write content for this topic
+      let content='';
+      try{
+        const nr=await fetch(`https://newsapi.org/v2/everything?q=${encodeURIComponent(topic)}&apiKey=${config.freenews.key}&pageSize=3`);
+        const nd=await nr.json();const articles=(nd?.articles||[]).slice(0,3);
+        const wr=await fetch(`https://s.jina.ai/${encodeURIComponent(topic)}`,{headers:{Authorization:`Bearer ${config.jina.key}`}});
+        const wt=await wr.text();
+        const sources=[...articles.map(a=>`- ${a.title}: ${a.description||''}`),`- Web: ${wt.substring(0,800)}`].join('\n');
+        content=await azure.generateContent(`Write a genuine, evidence-based Facebook post about: ${topic}\n\nUse these real sources:\n${sources}\n\n200-400 words. 3-5 hashtags. CTA at end. Real examples only, no generic fluff.`,{systemPrompt:'Tech writer. Evidence-based.',maxTokens:1200});
+      }catch(e){console.error('[autopilot] research failed:',e.message);content='';}
       const hour=8+Math.floor(Math.random()*12);
       const sched=new Date();sched.setHours(hour,0,0,0);
       if(sched<=now)sched.setDate(sched.getDate()+1);
-      try{await db.addToQueue({content:'',topic,type:day.type||'post',platform:'facebook',scheduled_for:sched.toISOString(),tone:'casual'});}catch{}
+      try{await db.addToQueue({content,topic,type:day.type||'post',platform:'facebook',scheduled_for:sched.toISOString(),tone:'evidence-based'});}catch{}
     }
   }catch(e){console.error('Auto-pilot error:',e.message);}
 }
