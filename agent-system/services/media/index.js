@@ -15,7 +15,7 @@ app.post('/media/reel',async(req,res)=>{try{
   const pd=await pr.json();const clips=[];
   if(pd?.videos?.length){for(let i=0;i<Math.min(pd.videos.length,2);i++){const vf=pd.videos[i].video_files.find(f=>f.quality==='hd')||pd.videos[i].video_files[0];if(vf?.link){const cp=`${TMP}/clip${i}.mp4`;execSync(`curl -s -L "${vf.link}" -o ${cp}`,{timeout:30000});clips.push(cp);}}}
   const ttsPath=`${TMP}/voiceover.mp3`;
-  const ssml=`<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'><voice name='en-US-JennyNeural'>${script.replace(/</g,'')}</voice></speak>`;
+  const esc=script.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');const ssml=`<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'><voice name='en-US-JennyNeural'>${esc}</voice></speak>`;
   await(fetch(`https://${config.speech.region}.tts.speech.microsoft.com/cognitiveservices/v1`,{method:'POST',headers:{'Ocp-Apim-Subscription-Key':config.speech.key,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-16khz-128kbitrate-mono-mp3'},body:ssml}).then(async r=>{const b=Buffer.from(await r.arrayBuffer());fs.writeFileSync(ttsPath,b);}));
   const musicPath=`${TMP}/music.wav`;try{execSync(`sox -n ${musicPath} synth 15 sine 440 vol 0.1`,{timeout:10000});}catch{fs.writeFileSync(musicPath,'');}
   const out=`${TMP}/reel_final.mp4`;const clipSrc=clips.length>0?`-i ${clips[0]}`:'-f lavfi -i color=c=black:s=1080x1920:d=15';
@@ -30,7 +30,7 @@ app.post('/media/reel',async(req,res)=>{try{
 app.post('/media/tts',async(req,res)=>{try{
   const{text,voice}=req.body;if(!text)return res.status(400).json({error:'Text required'});
   const fetch=(await import('node-fetch')).default;
-  const vn=voice||'en-US-JennyNeural';const ssml=`<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'><voice name='${vn}'>${text.replace(/</g,'')}</voice></speak>`;
+  const vn=voice||'en-US-JennyNeural';const esc=text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');const ssml=`<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'><voice name='${vn}'>${esc}</voice></speak>`;
   const r=await fetch(`https://${config.speech.region}.tts.speech.microsoft.com/cognitiveservices/v1`,{method:'POST',headers:{'Ocp-Apim-Subscription-Key':config.speech.key,'Content-Type':'application/ssml+xml','X-Microsoft-OutputFormat':'audio-16khz-128kbitrate-mono-mp3'},body:ssml});
   const db=require(path.join(__dirname,'..','..','shared','db'));const fn=`tts/${Date.now()}.mp3`;
   const b=Buffer.from(await r.arrayBuffer());await db.supabase.storage.from('media').upload(fn,b,{contentType:'audio/mpeg',upsert:false});
