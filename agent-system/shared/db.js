@@ -34,8 +34,10 @@ async function getAnalytics(days = 28) {
   if (error) throw error; return data || [];
 }
 async function getPauseState() {
-  const { data } = await supabase.from('pause_state').select('*').order('updated_at', { ascending: false }).limit(1).single().catch(() => ({ data: null }));
-  return data || { paused: false };
+  try {
+    const { data } = await supabase.from('pause_state').select('*').order('updated_at', { ascending: false }).limit(1).single();
+    return data || { paused: false };
+  } catch { return { paused: false }; }
 }
 async function setPauseState(paused, expiresAt = null) {
   await supabase.from('pause_state').upsert({ id: 1, paused, expires_at: expiresAt, updated_at: new Date().toISOString() }).catch(() => {});
@@ -79,17 +81,20 @@ async function removeFromQueue(id) {
   await supabase.from('content_queue').delete().eq('id', id).catch(() => {});
 }
 async function queueStats() {
-  const { data, error } = await supabase.from('content_queue')
-    .select('status, platform, count', { count: 'exact', head: false });
-  if (error) return { scheduled: 0, posted: 0, failed: 0 };
-  const stats = { scheduled: 0, posted: 0, failed: 0, by_platform: {} };
-  for (const r of data || []) {
-    if (r.status === 'scheduled') stats.scheduled += r.count;
-    if (r.status === 'posted') stats.posted += r.count;
-    if (r.status === 'failed') stats.failed += r.count;
-    stats.by_platform[r.platform] = (stats.by_platform[r.platform] || 0) + r.count;
-  }
-  return stats;
+  try {
+    const { data, error, count } = await supabase.from('content_queue').select('*', { count: 'exact', head: true });
+    if (error) return { scheduled: 0, posted: 0, failed: 0, total: 0, by_platform: {} };
+    const all = await supabase.from('content_queue').select('status, platform');
+    if (all.error) return { scheduled: count || 0, posted: 0, failed: 0, total: count || 0, by_platform: {} };
+    const stats = { scheduled: 0, posted: 0, failed: 0, total: count || 0, by_platform: {} };
+    for (const r of all.data || []) {
+      if (r.status === 'scheduled') stats.scheduled++;
+      if (r.status === 'posted') stats.posted++;
+      if (r.status === 'failed') stats.failed++;
+      stats.by_platform[r.platform] = (stats.by_platform[r.platform] || 0) + 1;
+    }
+    return stats;
+  } catch { return { scheduled: 0, posted: 0, failed: 0, total: 0, by_platform: {} }; }
 }
 
 module.exports = { supabase, savePost, getPosts, getRecentPosts, saveTrending, getLatestTrends, saveAnalytics, getAnalytics, getPauseState, setPauseState, saveLead, saveStrategy, addToQueue, getQueue, getDueItems, markPosted, removeFromQueue, queueStats };
