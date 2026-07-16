@@ -21,7 +21,7 @@ app.post('/content/research',async(req,res)=>{try{
   const nr=await fetch(`https://newsapi.org/v2/everything?q=${encodeURIComponent(query||'AI tech')}&apiKey=${config.freenews.key}&pageSize=5`);
   const nd=await nr.json();
   if(nd?.articles)results.push(...nd.articles.slice(0,5).map(a=>({title:a.title,url:a.url,source:'news',summary:a.description})));
-  const wr=await fetch(`https://r.jina.ai/${encodeURIComponent(query||'trending AI tools 2026')}`,{headers:{Authorization:`Bearer ${config.jina.key}`}});
+  const wr=await fetch(`https://s.jina.ai/${encodeURIComponent(query||'trending AI tools 2026')}`,{headers:{Authorization:`Bearer ${config.jina.key}`}});
   const wt=await wr.text();
   const summary=await azure.generateContent(`Summarize: ${wt.substring(0,3000)}`,{maxTokens:500});
   results.push({title:'Web Research',summary,source:'web'});

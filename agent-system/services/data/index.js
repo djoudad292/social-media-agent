@@ -12,9 +12,9 @@ app.use((req,res,next)=>{if(req.path==='/health')return next();const t=req.heade
 
 app.post('/data/scrape',async(req,res)=>{try{
   const fetch=(await import('node-fetch')).default;const trends=[];
-  const rr=await fetch('https://www.reddit.com/r/technology/hot.json?limit=10',{headers:{'User-Agent':'AgentSystem/1.0'}});
-  const rd=await rr.json();if(rd?.data?.children)rd.data.children.forEach(c=>{const d=c.data;trends.push({source:'reddit',title:d.title,url:`https://reddit.com${d.permalink}`,score:d.score,summary:(d.selftext||'').substring(0,300)});});
-  const hr=await fetch('https://hacker-news.firebaseio.com/v0/topstories.json');const ids=await hr.json();
+  const rr=await fetch('https://www.reddit.com/r/technology/hot.json?limit=10',{headers:{'User-Agent':'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36'}});
+  try{const rd=await rr.json();if(rd?.data?.children)rd.data.children.forEach(c=>{const d=c.data;trends.push({source:'reddit',title:d.title,url:`https://reddit.com${d.permalink}`,score:d.score,summary:(d.selftext||'').substring(0,300)});});}catch{}
+  const hr=await fetch('https://hacker-news.firebaseio.com/v0/topstories.json');let ids=[];try{ids=await hr.json();}catch{}
   for(const id of ids.slice(0,10)){try{const ir=await fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`);const it=await ir.json();if(it?.title)trends.push({source:'hackernews',title:it.title,url:it.url||`https://news.ycombinator.com/item?id=${id}`,score:it.score,summary:''});}catch{}}
   if(trends.length)await db.saveTrending(trends);
   res.json({trends_count:trends.length,trends});
@@ -30,7 +30,7 @@ app.post('/data/analytics',async(req,res)=>{try{
 app.post('/data/leads/hunt',async(req,res)=>{try{
   const fetch=(await import('node-fetch')).default;
   const q=req.body.niche||'startups hiring AI developers 2026';
-  const wr=await fetch(`https://r.jina.ai/${encodeURIComponent(q)}`,{headers:{Authorization:`Bearer ${config.jina.key}`}});
+  const wr=await fetch(`https://s.jina.ai/${encodeURIComponent(q)}`,{headers:{Authorization:`Bearer ${config.jina.key}`}});
   const wt=await wr.text();
   const lt=await azure.generateContent(`Extract up to 5 leads from this. JSON array: company, need, contact, email, source_url.\n${wt.substring(0,4000)}`,{maxTokens:1000,temperature:0.3});
   let leads=[];try{const m=lt.match(/\[[\s\S]*?\]/);if(m)leads=JSON.parse(m[0]);}catch{}
@@ -64,7 +64,7 @@ app.post('/api/content/research',async(req,res)=>{try{
   const nr=await fetch(`https://newsapi.org/v2/everything?q=${encodeURIComponent(query||'AI tech')}&apiKey=${config.freenews.key}&pageSize=5`);
   const nd=await nr.json();
   if(nd?.articles)results.push(...nd.articles.slice(0,5).map(a=>({title:a.title,url:a.url,source:'news',summary:a.description})));
-  const wr=await fetch(`https://r.jina.ai/${encodeURIComponent(query||'trending AI tools 2026')}`,{headers:{Authorization:`Bearer ${config.jina.key}`}});
+  const wr=await fetch(`https://s.jina.ai/${encodeURIComponent(query||'trending AI tools 2026')}`,{headers:{Authorization:`Bearer ${config.jina.key}`}});
   const wt=await wr.text();
   const summary=await azure.generateContent(`Summarize: ${wt.substring(0,3000)}`,{maxTokens:500});
   results.push({title:'Web Research',summary,source:'web'});
