@@ -1,182 +1,153 @@
-const { Pool } = require('pg');
+const Redis = require('ioredis');
+const { createClient } = require('@supabase/supabase-js');
 const config = require('./config');
 
-// Keep supabase-js client for media service Storage operations
-const { createClient } = require('@supabase/supabase-js');
+// Keep supabase client for media service Storage
 const supabase = createClient(config.supabase.url, config.supabase.serviceKey, { auth: { persistSession: false } });
 
-const POOLER_HOST = 'aws-0-us-east-1.pooler.supabase.com';
-
-let pool;
-function getPool() {
-  if (!pool) {
-    const pwd = process.env.SUPABASE_DATABASE_PASSWORD;
-    if (!pwd) throw new Error('SUPABASE_DATABASE_PASSWORD not set');
-    const ref = (config.supabase.url || '').replace('https://', '').split('.')[0];
-    // Try pooler with postgres user (session mode on 5432)
-    const connStr = `postgresql://postgres:${encodeURIComponent(pwd)}@${POOLER_HOST}:5432/postgres`;
-    pool = new Pool({ connectionString: connStr, ssl: { rejectUnauthorized: false }, max: 3 });
+let redis;
+function r() {
+  if (!redis) {
+    redis = new Redis(config.redis.url, { retryStrategy: (t) => Math.min(t * 50, 2000), maxRetriesPerRequest: 3, lazyConnect: true });
+    redis.on('error', () => {});
   }
-  return pool;
-}
-
-async function q(sql, params = []) {
-  const { rows } = await getPool().query(sql, params);
-  return rows;
+  return redis;
 }
 
 async function initDatabase() {
-  const pwd = process.env.SUPABASE_DATABASE_PASSWORD;
-  if (!pwd) { console.warn('SUPABASE_DATABASE_PASSWORD not set'); return; }
   try {
-    await q(`
-      CREATE TABLE IF NOT EXISTS content_queue (
-        id SERIAL PRIMARY KEY, content TEXT, topic TEXT, type TEXT DEFAULT 'post',
-        platform TEXT DEFAULT 'facebook', status TEXT DEFAULT 'scheduled',
-        scheduled_for TIMESTAMPTZ NOT NULL, tone TEXT DEFAULT 'casual',
-        metadata JSONB DEFAULT '{}', posted_at TIMESTAMPTZ, result JSONB,
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      );
-      CREATE TABLE IF NOT EXISTS posts (
-        id SERIAL PRIMARY KEY, content TEXT, type TEXT DEFAULT 'post', status TEXT,
-        facebook_post_id TEXT, created_at TIMESTAMPTZ DEFAULT NOW()
-      );
-      CREATE TABLE IF NOT EXISTS pause_state (
-        id INTEGER PRIMARY KEY DEFAULT 1, paused BOOLEAN DEFAULT false,
-        expires_at TIMESTAMPTZ, updated_at TIMESTAMPTZ DEFAULT NOW()
-      );
-      CREATE TABLE IF NOT EXISTS trending_topics (
-        id SERIAL PRIMARY KEY, source TEXT, title TEXT, url TEXT, score REAL,
-        summary TEXT, fetched_at TIMESTAMPTZ DEFAULT NOW()
-      );
-      CREATE TABLE IF NOT EXISTS analytics (
-        id SERIAL PRIMARY KEY, date DATE UNIQUE, impressions INTEGER DEFAULT 0,
-        engaged_users INTEGER DEFAULT 0, followers INTEGER DEFAULT 0,
-        raw_data JSONB, created_at TIMESTAMPTZ DEFAULT NOW()
-      );
-      CREATE TABLE IF NOT EXISTS leads (
-        id SERIAL PRIMARY KEY, company TEXT, contact TEXT, email TEXT,
-        score REAL DEFAULT 0, source TEXT, notes TEXT, status TEXT DEFAULT 'new',
-        created_at TIMESTAMPTZ DEFAULT NOW()
-      );
-      CREATE TABLE IF NOT EXISTS strategy (
-        id SERIAL PRIMARY KEY, week TEXT UNIQUE, plan JSONB,
-        updated_at TIMESTAMPTZ DEFAULT NOW()
-      );
-    `);
-    await q(`INSERT INTO pause_state (id, paused) VALUES (1, false) ON CONFLICT (id) DO NOTHING`);
-    console.log('Database tables ready');
-  } catch (e) { console.error('DB init error:', e.message); }
+    await r().connect();
+    // Ensure queue key exists
+    const exists = await r().exists('queue:next_id');
+    if (!exists) await r().set('queue:next_id', 0);
+    if (!await r().exists('pause:state')) await r().set('pause:state', JSON.stringify({ paused: false }));
+    if (!await r().exists('post:next_id')) await r().set('post:next_id', 0);
+    console.log('Redis storage ready');
+  } catch (e) { console.error('Redis init error:', e.message); }
 }
 
 // Posts
 async function savePost(post) {
-  const rows = await q(
-    `INSERT INTO posts (content, type, status, facebook_post_id) VALUES ($1,$2,$3,$4) RETURNING *`,
-    [post.content, post.type || 'post', post.status, post.facebook_post_id || null]
-  );
-  return rows[0];
+  const id = await r().incr('post:next_id');
+  const p = { id, ...post, created_at: new Date().toISOString() };
+  await r().lpush('posts:all', JSON.stringify(p));
+  return p;
 }
 async function getPosts(limit = 20) {
-  return q(`SELECT * FROM posts ORDER BY created_at DESC LIMIT $1`, [limit]);
+  const items = await r().lrange('posts:all', 0, limit - 1);
+  return items.map(i => JSON.parse(i));
 }
 async function getRecentPosts(days = 7) {
-  return q(`SELECT * FROM posts WHERE created_at >= $1 ORDER BY created_at DESC`,
-    [new Date(Date.now() - days * 86400000).toISOString()]);
+  const all = await getPosts(1000);
+  const since = Date.now() - days * 86400000;
+  return all.filter(p => new Date(p.created_at).getTime() > since);
 }
 
 // Trending
 async function saveTrending(trends) {
   if (!trends.length) return;
   for (const t of trends) {
-    try { await q(`INSERT INTO trending_topics (source,title,url,score,summary) VALUES ($1,$2,$3,$4,$5)`,
-      [t.source, t.title, t.url, t.score, (t.summary || '').substring(0, 500)]); } catch {}
+    await r().lpush('trending:all', JSON.stringify({ ...t, fetched_at: new Date().toISOString() }));
   }
+  await r().ltrim('trending:all', 0, 99);
 }
 async function getLatestTrends(limit = 20) {
-  return q(`SELECT * FROM trending_topics ORDER BY fetched_at DESC LIMIT $1`, [limit]);
+  const items = await r().lrange('trending:all', 0, limit - 1);
+  return items.map(i => JSON.parse(i));
 }
 
 // Analytics
 async function saveAnalytics(data) {
-  await q(`INSERT INTO analytics (date,impressions,engaged_users,followers,raw_data) VALUES ($1,$2,$3,$4,$5)
-    ON CONFLICT (date) DO UPDATE SET impressions=$2,engaged_users=$3,followers=$4,raw_data=$5`,
-    [data.date, data.impressions, data.engaged_users, data.followers, JSON.stringify(data.raw_data || {})]
-  ).catch(() => {});
+  await r().lpush('analytics:all', JSON.stringify(data));
+  await r().ltrim('analytics:all', 0, 365);
 }
 async function getAnalytics(days = 28) {
-  return q(`SELECT * FROM analytics WHERE date >= $1 ORDER BY date ASC`,
-    [new Date(Date.now() - days * 86400000).toISOString().split('T')[0]]);
+  const all = await r().lrange('analytics:all', 0, 365);
+  return all.map(i => JSON.parse(i)).filter(a => {
+    const d = new Date(a.date).getTime();
+    return Date.now() - d < days * 86400000;
+  });
 }
 
 // Pause state
 async function getPauseState() {
   try {
-    const rows = await q(`SELECT * FROM pause_state ORDER BY updated_at DESC LIMIT 1`);
-    return rows[0] || { paused: false };
+    const v = await r().get('pause:state');
+    return v ? JSON.parse(v) : { paused: false };
   } catch { return { paused: false }; }
 }
 async function setPauseState(paused, expiresAt = null) {
-  await q(`INSERT INTO pause_state (id,paused,expires_at,updated_at) VALUES (1,$1,$2,NOW())
-    ON CONFLICT (id) DO UPDATE SET paused=$1,expires_at=$2,updated_at=NOW()`,
-    [paused, expiresAt]);
+  await r().set('pause:state', JSON.stringify({ paused, expires_at: expiresAt, updated_at: new Date().toISOString() }));
 }
 
 // Leads
 async function saveLead(lead) {
-  const rows = await q(
-    `INSERT INTO leads (company,contact,email,score,source,notes,status) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-    [lead.company, lead.contact, lead.email, lead.score, lead.source, lead.notes, lead.status]
-  );
-  return rows[0];
+  const l = { ...lead, created_at: new Date().toISOString() };
+  await r().lpush('leads:all', JSON.stringify(l));
+  return l;
 }
 
 // Strategy
 async function saveStrategy(week, plan) {
-  await q(`INSERT INTO strategy (week,plan,updated_at) VALUES ($1,$2,NOW())
-    ON CONFLICT (week) DO UPDATE SET plan=$2,updated_at=NOW()`,
-    [week, JSON.stringify(plan)]);
+  await r().set(`strategy:${week}`, JSON.stringify({ week, plan, updated_at: new Date().toISOString() }));
 }
 async function getStrategy(week) {
-  const rows = await q(`SELECT * FROM strategy WHERE week=$1 LIMIT 1`, [week]);
-  return rows[0] || null;
+  const v = await r().get(`strategy:${week}`);
+  return v ? JSON.parse(v) : null;
 }
 
 // Content queue
 async function addToQueue(item) {
-  const rows = await q(
-    `INSERT INTO content_queue (content,topic,type,platform,scheduled_for,status,tone,metadata)
-     VALUES ($1,$2,$3,$4,$5,'scheduled',$6,$7) RETURNING *`,
-    [item.content, item.topic, item.type, item.platform || 'facebook',
-     item.scheduled_for, item.tone || 'casual', JSON.stringify(item.metadata || {})]
-  );
-  return rows[0];
+  const id = await r().incr('queue:next_id');
+  const q = { id, content: item.content, topic: item.topic, type: item.type || 'post', platform: item.platform || 'facebook', status: 'scheduled', scheduled_for: item.scheduled_for, tone: item.tone || 'casual', metadata: item.metadata || {}, created_at: new Date().toISOString() };
+  await r().lpush('queue:items', JSON.stringify(q));
+  return q;
 }
 async function getQueue(opts = {}) {
-  let sql = 'SELECT * FROM content_queue WHERE 1=1';
-  const params = []; let i = 1;
-  if (opts.status) { sql += ` AND status=$${i++}`; params.push(opts.status); }
-  if (opts.platform) { sql += ` AND platform=$${i++}`; params.push(opts.platform); }
-  sql += ' ORDER BY scheduled_for ASC';
-  if (opts.limit) { sql += ` LIMIT $${i++}`; params.push(opts.limit); }
-  return q(sql, params);
+  const all = await r().lrange('queue:items', 0, -1);
+  let items = all.map(i => JSON.parse(i));
+  if (opts.status) items = items.filter(i => i.status === opts.status);
+  if (opts.platform) items = items.filter(i => i.platform === opts.platform);
+  items.sort((a, b) => new Date(a.scheduled_for) - new Date(b.scheduled_for));
+  if (opts.limit) items = items.slice(0, opts.limit);
+  return items;
 }
 async function getDueItems() {
-  return q(`SELECT * FROM content_queue WHERE status='scheduled' AND scheduled_for<=$1 ORDER BY scheduled_for ASC LIMIT 10`,
-    [new Date().toISOString()]);
+  const all = await r().lrange('queue:items', 0, -1);
+  const now = new Date();
+  return all.map(i => JSON.parse(i)).filter(i => i.status === 'scheduled' && new Date(i.scheduled_for) <= now).sort((a, b) => new Date(a.scheduled_for) - new Date(b.scheduled_for)).slice(0, 10);
 }
 async function markPosted(id, postResult) {
-  await q(`UPDATE content_queue SET status='posted',posted_at=NOW(),result=$2 WHERE id=$1`,
-    [id, JSON.stringify(postResult)]).catch(() => {});
+  const all = await r().lrange('queue:items', 0, -1);
+  for (const raw of all) {
+    const item = JSON.parse(raw);
+    if (item.id === id) {
+      item.status = 'posted';
+      item.posted_at = new Date().toISOString();
+      item.result = postResult;
+      // Store updated item back
+      const index = all.indexOf(raw);
+      await r().lset('queue:items', index, JSON.stringify(item));
+      break;
+    }
+  }
 }
 async function removeFromQueue(id) {
-  await q(`DELETE FROM content_queue WHERE id=$1`, [id]).catch(() => {});
+  const all = await r().lrange('queue:items', 0, -1);
+  for (const raw of all) {
+    const item = JSON.parse(raw);
+    if (item.id === id) {
+      await r().lrem('queue:items', 1, raw);
+      break;
+    }
+  }
 }
 async function queueStats() {
   try {
-    const rows = await q(`SELECT status,platform FROM content_queue`);
-    const stats = { scheduled: 0, posted: 0, failed: 0, total: rows.length, by_platform: {} };
-    for (const r of rows) {
+    const all = await r().lrange('queue:items', 0, -1);
+    const items = all.map(i => JSON.parse(i));
+    const stats = { scheduled: 0, posted: 0, failed: 0, total: items.length, by_platform: {} };
+    for (const r of items) {
       if (r.status === 'scheduled') stats.scheduled++;
       if (r.status === 'posted') stats.posted++;
       if (r.status === 'failed') stats.failed++;
