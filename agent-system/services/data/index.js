@@ -431,6 +431,31 @@ setInterval(async()=>{try{const fetch=(await import('node-fetch')).default;const
 // Auto-tick every 15 minutes (process due queue items)
 setInterval(async()=>{try{const fetch=(await import('node-fetch')).default;await fetch(`http://localhost:${PORT}/api/scheduler/tick`,{method:'POST',timeout:60000});}catch(e){console.error('Auto-tick failed:',e.message)}},900000);
 
+// ====== Reel posting (stock video + Facebook upload) ======
+app.post('/api/reel/post',async(req,res)=>{try{
+  const fetch=(await import('node-fetch')).default;const topic=req.body.topic||'AI technology';
+  const content=await azure.generateContent(`Write a 1-2 sentence Facebook reel caption about: ${topic}. Include 3-5 relevant hashtags.`,{maxTokens:200});
+  // Fetch stock video from Pexels
+  const pr=await fetch(`https://api.pexels.com/videos/search?query=${encodeURIComponent(topic)}&per_page=3&orientation=portrait&size=small`,{headers:{Authorization:config.pexels.key}});
+  const pd=await pr.json();const v=pd?.videos?pd.videos.find(v=>v.video_files?.some(f=>f.quality==='hd'&&f.width<=1080))||pd.videos?.[0]:null;
+  if(!v){res.status(404).json({error:'No stock video found'});return;}
+  const vf=v.video_files.find(f=>f.quality==='hd'&&f.width<=1080)||v.video_files[0];
+  // Download video
+  const vr=await fetch(vf.link);const vb=Buffer.from(await vr.arrayBuffer());
+  // Upload to Supabase Storage (media bucket)
+  const fn=`reels/${Date.now()}.mp4`;await db.supabase.storage.from('media').upload(fn,vb,{contentType:'video/mp4',upsert:false});
+  const{data:{publicUrl:vu}}=db.supabase.storage.from('media').getPublicUrl(fn);
+  // Post to Facebook as video/reel
+  const https=require('https');const qs=require('querystring');
+  const body=qs.stringify({access_token:config.facebook.accessToken||'',file_url:vu,description:content});
+  const fbRes=await new Promise((resolve)=>{
+    const r=https.request('https://graph.facebook.com/v21.0/me/videos',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Content-Length':Buffer.byteLength(body)}},resp=>{let d='';resp.on('data',c=>d+=c);resp.on('end',()=>{try{resolve(JSON.parse(d))}catch(e){resolve({parseError:e.message})}});});
+    r.on('error',e=>resolve({netError:e.message}));r.setTimeout(30000,()=>{r.destroy();resolve({timeout:true})});r.write(body);r.end();
+  });
+  if(fbRes.id){try{await db.savePost({content,topic,type:'reel',status:'posted',facebook_post_id:fbRes.id});}catch{}res.json({success:true,reel_url:`https://facebook.com/${fbRes.id}`,caption:content});}
+  else res.json({error:'Facebook video error',raw:fbRes,video_url:vu});
+}catch(e){res.json({error:e.message})}});
+
 async function start(){await redis.connect().catch(()=>{});setInterval(()=>redis.heartbeat('data'),60000);await db.initDatabase().catch(()=>{});if(!autoPilotInterval){autoPilotInterval=setInterval(autoPilotCycle,AUTOPILOT_INTERVAL);setTimeout(autoPilotCycle,5000);}app.listen(PORT,'0.0.0.0',()=>console.log(`Data service on ${PORT}`));}
 start();
 // v2 - telegram bot
