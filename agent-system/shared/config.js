@@ -17,7 +17,7 @@ const config = {
     region: process.env.AZURE_SPEECH_REGION || 'germanywestcentral',
   },
   facebook: {
-    accessToken: process.env.FACEBOOK_ACCESS_TOKEN,
+    accessToken: process.env.FACEBOOK_ACCESS_TOKEN || (()=>{try{return require('fs').readFileSync('/etc/secrets/fb-token.txt','utf8').trim()}catch{return ''}})(),
     pageId: process.env.FACEBOOK_PAGE_ID || '651243158078819',
   },
   telegram: { botToken: process.env.TELEGRAM_BOT_TOKEN },
