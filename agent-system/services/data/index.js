@@ -19,7 +19,13 @@ app.get('/debug/fb',async(req,res)=>{try{
     r.on('error',e=>resolve({netError:e.message}));r.setTimeout(10000,()=>{r.destroy();resolve({timeout:true})});
     r.write(body);r.end();
   });
-  res.json({tokenLength:t.length,tokenEnd:t.substring(t.length-10),fbTest,postTest});
+  // Check Instagram Business Account linked to page
+  const igCheck=await new Promise((resolve)=>{
+    const r=https.get(`https://graph.facebook.com/v21.0/me/accounts?fields=id,name,instagram_business_account{id,username}&access_token=${encodeURIComponent(t)}`,resp=>{let d='';resp.on('data',c=>d+=c);resp.on('end',()=>{try{resolve(JSON.parse(d))}catch(e){resolve({parseError:e.message})}});});
+    r.on('error',e=>resolve({netError:e.message}));r.setTimeout(5000,()=>{r.destroy();resolve({timeout:true})});
+  });
+  const igAccount=igCheck?.data?.[0]?.instagram_business_account||null;
+  res.json({tokenLength:t.length,tokenEnd:t.substring(t.length-10),fbTest,postTest,instagram:{linked:!!igAccount,account:igAccount,pages:igCheck?.data}});
 }catch(e){res.json({error:e.message})}});
 app.use((req,res,next)=>{if(req.path==='/health'||req.path==='/debug/fb'||req.path==='/api/telegram/webhook')return next();const t=req.headers['x-agent-token'];if(config.gatewayToken&&t!==config.gatewayToken)return res.status(401).json({error:'Unauthorized'});next();});
 
