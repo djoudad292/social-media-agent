@@ -14,8 +14,8 @@ function getPool() {
     const pwd = process.env.SUPABASE_DATABASE_PASSWORD;
     if (!pwd) throw new Error('SUPABASE_DATABASE_PASSWORD not set');
     const ref = (config.supabase.url || '').replace('https://', '').split('.')[0];
-    const connStr = `postgresql://postgres.${ref}:${encodeURIComponent(pwd)}@${POOLER_HOST}:${POOLER_PORT}/postgres?sslmode=require`;
-    pool = new Pool({ connectionString: connStr, max: 3 });
+    const connStr = `postgresql://postgres.${ref}:${encodeURIComponent(pwd)}@${POOLER_HOST}:${POOLER_PORT}/postgres`;
+    pool = new Pool({ connectionString: connStr, ssl: { rejectUnauthorized: false }, max: 3 });
   }
   return pool;
 }
