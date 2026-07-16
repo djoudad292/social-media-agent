@@ -29,7 +29,7 @@ async function initDatabase() {
 // Posts
 async function savePost(post) {
   const id = await r().incr('post:next_id');
-  const p = { id, ...post, created_at: new Date().toISOString() };
+  const p = { ...post, id, created_at: new Date().toISOString() };
   await r().lpush('posts:all', JSON.stringify(p));
   return p;
 }
