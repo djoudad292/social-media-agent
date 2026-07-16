@@ -18,8 +18,7 @@ async function getRecentPosts(days = 7) {
 async function saveTrending(trends) {
   if (!trends.length) return;
   for (const t of trends) {
-    await supabase.from('trending_topics').insert({ source: t.source, title: t.title, url: t.url, score: t.score, summary: (t.summary || '').substring(0, 500) })
-      .maybeSingle().catch(() => {});
+    try { await supabase.from('trending_topics').insert({ source: t.source, title: t.title, url: t.url, score: t.score, summary: (t.summary || '').substring(0, 500) }); } catch {}
   }
 }
 async function getLatestTrends(limit = 20) {
