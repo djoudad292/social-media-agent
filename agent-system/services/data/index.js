@@ -21,11 +21,17 @@ app.get('/debug/fb',async(req,res)=>{try{
   });
   // Check Instagram Business Account linked to page
   const igCheck=await new Promise((resolve)=>{
-    const r=https.get(`https://graph.facebook.com/v21.0/me/accounts?fields=id,name,instagram_business_account{id,username}&access_token=${encodeURIComponent(t)}`,resp=>{let d='';resp.on('data',c=>d+=c);resp.on('end',()=>{try{resolve(JSON.parse(d))}catch(e){resolve({parseError:e.message})}});});
+    const r=https.get(`https://graph.facebook.com/v21.0/me/accounts?fields=id,name,instagram_business_account{id,username,profile_pic}&access_token=${encodeURIComponent(t)}`,resp=>{let d='';resp.on('data',c=>d+=c);resp.on('end',()=>{try{resolve(JSON.parse(d))}catch(e){resolve({parseError:e.message})}});});
     r.on('error',e=>resolve({netError:e.message}));r.setTimeout(5000,()=>{r.destroy();resolve({timeout:true})});
   });
-  const igAccount=igCheck?.data?.[0]?.instagram_business_account||null;
-  res.json({tokenLength:t.length,tokenEnd:t.substring(t.length-10),fbTest,postTest,instagram:{linked:!!igAccount,account:igAccount,pages:igCheck?.data}});
+  const targetPage=igCheck?.data?.find(p=>p.id==='651243158078819')||igCheck?.data?.[0];
+  const igAccount=targetPage?.instagram_business_account||null;
+  // Check token permissions
+  const permCheck=await new Promise((resolve)=>{
+    const r=https.get(`https://graph.facebook.com/v21.0/me/permissions?access_token=${encodeURIComponent(t)}`,resp=>{let d='';resp.on('data',c=>d+=c);resp.on('end',()=>{try{resolve(JSON.parse(d))}catch(e){resolve({parseError:e.message})}});});
+    r.on('error',e=>resolve({netError:e.message}));r.setTimeout(5000,()=>{r.destroy();resolve({timeout:true})});
+  });
+  res.json({tokenLength:t.length,tokenEnd:t.substring(t.length-10),fbTest,postTest,instagram:{linked:!!igAccount,account:igAccount,targetPage,allPages:igCheck?.data?.map(p=>({id:p.id,name:p.name,ig:p.instagram_business_account?.username||null}))},permissions:permCheck?.data?.filter(p=>p.status==='granted').map(p=>p.permission)||[]});
 }catch(e){res.json({error:e.message})}});
 app.use((req,res,next)=>{if(req.path==='/health'||req.path==='/debug/fb'||req.path==='/api/telegram/webhook')return next();const t=req.headers['x-agent-token'];if(config.gatewayToken&&t!==config.gatewayToken)return res.status(401).json({error:'Unauthorized'});next();});
 
