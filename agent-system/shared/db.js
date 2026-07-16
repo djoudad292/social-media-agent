@@ -48,4 +48,48 @@ async function saveStrategy(week, plan) {
   await supabase.from('strategy').upsert({ week, plan, updated_at: new Date().toISOString() }).catch(() => {});
 }
 
-module.exports = { supabase, savePost, getPosts, getRecentPosts, saveTrending, getLatestTrends, saveAnalytics, getAnalytics, getPauseState, setPauseState, saveLead, saveStrategy };
+async function addToQueue(item) {
+  const { data, error } = await supabase.from('content_queue').insert({
+    content: item.content, topic: item.topic, type: item.type,
+    platform: item.platform || 'facebook',
+    scheduled_for: item.scheduled_for,
+    status: 'scheduled', tone: item.tone || 'casual',
+    metadata: item.metadata || {}
+  }).select().single();
+  if (error) throw error; return data;
+}
+async function getQueue(opts = {}) {
+  let q = supabase.from('content_queue').select('*').order('scheduled_for', { ascending: true });
+  if (opts.status) q = q.eq('status', opts.status);
+  if (opts.platform) q = q.eq('platform', opts.platform);
+  if (opts.limit) q = q.limit(opts.limit);
+  const { data, error } = await q;
+  if (error) throw error; return data || [];
+}
+async function getDueItems() {
+  const { data, error } = await supabase.from('content_queue')
+    .select('*').eq('status', 'scheduled').lte('scheduled_for', new Date().toISOString())
+    .order('scheduled_for', { ascending: true }).limit(10);
+  if (error) throw error; return data || [];
+}
+async function markPosted(id, postResult) {
+  await supabase.from('content_queue').update({ status: 'posted', posted_at: new Date().toISOString(), result: postResult }).eq('id', id).catch(() => {});
+}
+async function removeFromQueue(id) {
+  await supabase.from('content_queue').delete().eq('id', id).catch(() => {});
+}
+async function queueStats() {
+  const { data, error } = await supabase.from('content_queue')
+    .select('status, platform, count', { count: 'exact', head: false });
+  if (error) return { scheduled: 0, posted: 0, failed: 0 };
+  const stats = { scheduled: 0, posted: 0, failed: 0, by_platform: {} };
+  for (const r of data || []) {
+    if (r.status === 'scheduled') stats.scheduled += r.count;
+    if (r.status === 'posted') stats.posted += r.count;
+    if (r.status === 'failed') stats.failed += r.count;
+    stats.by_platform[r.platform] = (stats.by_platform[r.platform] || 0) + r.count;
+  }
+  return stats;
+}
+
+module.exports = { supabase, savePost, getPosts, getRecentPosts, saveTrending, getLatestTrends, saveAnalytics, getAnalytics, getPauseState, setPauseState, saveLead, saveStrategy, addToQueue, getQueue, getDueItems, markPosted, removeFromQueue, queueStats };
