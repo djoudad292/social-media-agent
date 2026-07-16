@@ -13,7 +13,13 @@ app.get('/debug/fb',async(req,res)=>{try{
     const r=https.get(`https://graph.facebook.com/v21.0/me?access_token=${encodeURIComponent(t)}`,resp=>{let d='';resp.on('data',c=>d+=c);resp.on('end',()=>{try{resolve(JSON.parse(d))}catch(e){resolve({parseError:e.message})}});});
     r.on('error',e=>resolve({netError:e.message}));r.setTimeout(5000,()=>{r.destroy();resolve({timeout:true})});
   });
-  res.json({hasEnv:!!process.env.FACEBOOK_ACCESS_TOKEN,hasConfig:!!config.facebook.accessToken,tokenLength:t.length,tokenStart:t.substring(0,15),tokenEnd:t.substring(t.length-10),pageId:config.facebook.pageId,fbTest});
+  const body=qs.stringify({access_token:t,message:'test from debug'});
+  const postTest=await new Promise((resolve)=>{
+    const r=https.request('https://graph.facebook.com/v21.0/me/feed',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Content-Length':Buffer.byteLength(body)}},resp=>{let d='';resp.on('data',c=>d+=c);resp.on('end',()=>{try{resolve(JSON.parse(d))}catch(e){resolve({parseError:e.message})}});});
+    r.on('error',e=>resolve({netError:e.message}));r.setTimeout(10000,()=>{r.destroy();resolve({timeout:true})});
+    r.write(body);r.end();
+  });
+  res.json({tokenLength:t.length,tokenEnd:t.substring(t.length-10),fbTest,postTest});
 }catch(e){res.json({error:e.message})}});
 app.use((req,res,next)=>{if(req.path==='/health'||req.path==='/debug/fb')return next();const t=req.headers['x-agent-token'];if(config.gatewayToken&&t!==config.gatewayToken)return res.status(401).json({error:'Unauthorized'});next();});
 
