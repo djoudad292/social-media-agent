@@ -114,16 +114,14 @@ for(const[route,[method,svc,...extra]]of Object.entries(proxyRoutes)){
 }
 
 app.post('/api/facebook/post',async(req,res)=>{try{
-  const{message}=req.body;if(!message)return res.status(400).json({error:'Message required'});
   const https=require('https');const qs=require('querystring');
   const t=config.facebook.accessToken||'';
-  const body=qs.stringify({access_token:t,message});
-  const result=await new Promise((resolve)=>{
+  const body=qs.stringify({access_token:t,message:req.body.message||'test'});
+  const fbRes=await new Promise((resolve)=>{
     const r=https.request('https://graph.facebook.com/v21.0/me/feed',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Content-Length':Buffer.byteLength(body)}},resp=>{let d='';resp.on('data',c=>d+=c);resp.on('end',()=>{try{resolve(JSON.parse(d))}catch(e){resolve({parseError:e.message})}});});
     r.on('error',e=>resolve({netError:e.message}));r.setTimeout(15000,()=>{r.destroy();resolve({timeout:true})});r.write(body);r.end();
   });
-  if(result.id){await db.savePost({content:message,type:'post',status:'posted',facebook_post_id:result.id});res.json({success:true,post_url:`https://facebook.com/${result.id}`});}
-  else res.status(500).json({error:'Facebook error',raw:result});
+  res.json({fbRes,tLen:t.length,tStart:t.substring(0,10),tEnd:t.substring(t.length-10)});
 }catch(e){res.json({error:e.message})}});
 
 // Auto-scrape every 2h (calls the full scrape endpoint on itself)
