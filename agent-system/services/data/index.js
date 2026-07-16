@@ -431,12 +431,14 @@ setInterval(async()=>{try{const fetch=(await import('node-fetch')).default;const
 // Auto-tick every 15 minutes (process due queue items)
 setInterval(async()=>{try{const fetch=(await import('node-fetch')).default;await fetch(`http://localhost:${PORT}/api/scheduler/tick`,{method:'POST',timeout:60000});}catch(e){console.error('Auto-tick failed:',e.message)}},900000);
 
+// ====== Debug test endpoint ======
+app.get('/api/reel/test',(req,res)=>{res.json({msg:'hello world',foo:'bar'});});
 // ====== Reel posting (stock video + Facebook upload) ======
 app.post('/api/reel/post',async(req,res)=>{try{
   const fetch=(await import('node-fetch')).default;const topic=req.body.topic||'AI technology';
-  const caption=`Check out this reel about ${topic}! 🚀 #AI #Tech #Innovation`;
-  let content=caption;
-  try{content=await azure.generateContent(`Write a 1-2 sentence Facebook reel caption about: ${topic}. Include 3-5 relevant hashtags.`,{maxTokens:200});}catch(e){console.error('[reel] gen failed:',e.message);}
+  const fallbackCaption=`Reel about ${topic}! What do you think? Drop a comment below! #Tech #Innovation #AI`;
+  let content=fallbackCaption;
+  try{const gen=await azure.generateContent(`Write a 1-2 sentence Facebook reel caption about: ${topic}. Include 3-5 relevant hashtags.`,{maxTokens:300});if(gen&&gen.length>5)content=gen;}catch(e){console.error('[reel] gen failed:',e.message);}
   // Fetch stock video from Pexels
   const pr=await fetch(`https://api.pexels.com/videos/search?query=${encodeURIComponent(topic)}&per_page=3&orientation=portrait&size=small`,{headers:{Authorization:config.pexels.key}});
   const pd=await pr.json();const v=pd?.videos?pd.videos.find(v=>v.video_files?.some(f=>f.quality==='hd'&&f.width<=1080))||pd.videos?.[0]:null;
@@ -455,7 +457,7 @@ app.post('/api/reel/post',async(req,res)=>{try{
     r.on('error',e=>resolve({netError:e.message}));r.setTimeout(30000,()=>{r.destroy();resolve({timeout:true})});r.write(body);r.end();
   });
   console.log(`[reel] content length: ${content?.length}, fbRes: ${JSON.stringify(fbRes).substring(0,200)}`);
-  if(fbRes.id){try{await db.savePost({content,topic,type:'reel',status:'posted',facebook_post_id:fbRes.id});}catch{}res.json({success:true,reel_url:`https://facebook.com/${fbRes.id}`,caption:content,raw_len:content?.length});}
+  if(fbRes.id){try{await db.savePost({content,topic,type:'reel',status:'posted',facebook_post_id:fbRes.id});}catch{}res.json({success:true,reel_url:`https://facebook.com/${fbRes.id}`,caption:content,raw_len:content?.length,fb_debug:JSON.stringify(fbRes).substring(0,100)});}
   else res.json({error:'Facebook video error',raw:fbRes,video_url:vu});
 }catch(e){res.json({error:e.message})}});
 
