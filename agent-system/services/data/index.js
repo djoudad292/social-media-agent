@@ -434,7 +434,8 @@ setInterval(async()=>{try{const fetch=(await import('node-fetch')).default;await
 // ====== Reel posting (stock video + Facebook upload) ======
 app.post('/api/reel/post',async(req,res)=>{try{
   const fetch=(await import('node-fetch')).default;const topic=req.body.topic||'AI technology';
-  const content=await azure.generateContent(`Write a 1-2 sentence Facebook reel caption about: ${topic}. Include 3-5 relevant hashtags.`,{maxTokens:200});
+  let content='';try{content=await azure.generateContent(`Write a 1-2 sentence Facebook reel caption about: ${topic}. Include 3-5 relevant hashtags.`,{maxTokens:200});}catch(e){console.error('[reel] gen failed:',e.message);content=topic;}
+  console.log(`[reel] content="${content}", len=${content?.length}`);
   // Fetch stock video from Pexels
   const pr=await fetch(`https://api.pexels.com/videos/search?query=${encodeURIComponent(topic)}&per_page=3&orientation=portrait&size=small`,{headers:{Authorization:config.pexels.key}});
   const pd=await pr.json();const v=pd?.videos?pd.videos.find(v=>v.video_files?.some(f=>f.quality==='hd'&&f.width<=1080))||pd.videos?.[0]:null;
