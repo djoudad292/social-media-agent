@@ -116,14 +116,15 @@ for(const[route,[method,svc,...extra]]of Object.entries(proxyRoutes)){
 app.post('/api/facebook/post',async(req,res)=>{try{
   const{message}=req.body;if(!message)return res.status(400).json({error:'Message required'});
   const https=require('https');const qs=require('querystring');
-  const body=qs.stringify({access_token:config.facebook.accessToken,message});
-  const d=await new Promise((resolve,reject)=>{
-    const r=https.request('https://graph.facebook.com/v21.0/me/feed',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Content-Length':Buffer.byteLength(body)}},resp=>{let d='';resp.on('data',c=>d+=c);resp.on('end',()=>{try{resolve(JSON.parse(d))}catch(e){reject(e)}});});
-    r.on('error',reject);r.write(body);r.end();
+  const t=config.facebook.accessToken||'';
+  const body=qs.stringify({access_token:t,message});
+  const result=await new Promise((resolve)=>{
+    const r=https.request('https://graph.facebook.com/v21.0/me/feed',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Content-Length':Buffer.byteLength(body)}},resp=>{let d='';resp.on('data',c=>d+=c);resp.on('end',()=>{try{resolve(JSON.parse(d))}catch(e){resolve({parseError:e.message})}});});
+    r.on('error',e=>resolve({netError:e.message}));r.setTimeout(15000,()=>{r.destroy();resolve({timeout:true})});r.write(body);r.end();
   });
-  if(d.id){await db.savePost({content:message,type:'post',status:'posted',facebook_post_id:d.id});res.json({success:true,post_url:`https://facebook.com/${d.id}`});}
-  else res.status(500).json({error:'Facebook error',raw:d});
-}catch(e){res.status(500).json({error:e.message})}});
+  if(result.id){await db.savePost({content:message,type:'post',status:'posted',facebook_post_id:result.id});res.json({success:true,post_url:`https://facebook.com/${result.id}`});}
+  else res.status(500).json({error:'Facebook error',raw:result});
+}catch(e){res.json({error:e.message})}});
 
 // Auto-scrape every 2h (calls the full scrape endpoint on itself)
 setInterval(async()=>{try{const fetch=(await import('node-fetch')).default;const r=await fetch(`http://localhost:${PORT}/data/scrape`,{method:'POST',timeout:60000});if(r.ok)console.log('Auto-scrape OK');}catch(e){console.error('Auto-scrape failed:',e.message)}},7200000);
