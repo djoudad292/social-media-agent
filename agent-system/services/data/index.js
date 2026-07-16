@@ -6,7 +6,8 @@ const redis=require(path.join(__dirname,'..','..','shared','redis'));
 const azure=require(path.join(__dirname,'..','..','shared','azure-proxy'));
 const PORT=process.env.PORT||3003;
 app.get('/health',(req,res)=>res.json({ok:true,service:'data'}));
-app.use((req,res,next)=>{if(req.path==='/health')return next();const t=req.headers['x-agent-token'];if(config.gatewayToken&&t!==config.gatewayToken)return res.status(401).json({error:'Unauthorized'});next();});
+app.get('/debug/fb',(req,res)=>{res.json({hasEnv:!!process.env.FACEBOOK_ACCESS_TOKEN,hasConfig:!!config.facebook.accessToken,configVal:(config.facebook.accessToken||'').substring(0,20)+'...',pageId:config.facebook.pageId,gatewayToken:!!config.gatewayToken});});
+app.use((req,res,next)=>{if(req.path==='/health'||req.path==='/debug/fb')return next();const t=req.headers['x-agent-token'];if(config.gatewayToken&&t!==config.gatewayToken)return res.status(401).json({error:'Unauthorized'});next();});
 
 // Data routes
 
