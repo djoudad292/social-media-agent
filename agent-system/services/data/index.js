@@ -33,7 +33,7 @@ app.get('/debug/fb',async(req,res)=>{try{
   });
   res.json({tokenLength:t.length,tokenEnd:t.substring(t.length-10),fbTest,postTest,instagram:{linked:!!igAccount,account:igAccount,targetPage,allPages:igCheck?.data?.map(p=>({id:p.id,name:p.name,ig:p.instagram_business_account?.username||null}))},permissions:permCheck?.data?.filter(p=>p.status==='granted').map(p=>p.permission)||[]});
 }catch(e){res.json({error:e.message})}});
-app.use((req,res,next)=>{if(req.path==='/health'||req.path==='/debug/fb'||req.path==='/api/telegram/webhook')return next();const t=req.headers['x-agent-token'];if(config.gatewayToken&&t!==config.gatewayToken)return res.status(401).json({error:'Unauthorized'});next();});
+app.use((req,res,next)=>{if(req.path==='/health'||req.path==='/debug/fb'||req.path==='/api/telegram/webhook'||req.path==='/api/telegram/webhook-info'||req.path==='/api/telegram/set-webhook')return next();const t=req.headers['x-agent-token'];if(config.gatewayToken&&t!==config.gatewayToken)return res.status(401).json({error:'Unauthorized'});next();});
 
 // Data routes
 
