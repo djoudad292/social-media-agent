@@ -100,9 +100,13 @@ for(const[route,[method,svc,...extra]]of Object.entries(proxyRoutes)){
 
 app.post('/api/facebook/post',async(req,res)=>{try{
   const{message}=req.body;if(!message)return res.status(400).json({error:'Message required'});
-  const f=await getFetch();
-  const r=await f(`https://graph.facebook.com/v21.0/me/feed`,{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:new URLSearchParams({access_token:config.facebook.accessToken,message}).toString()});
-  const d=await r.json();if(d.id){await db.savePost({content:message,type:'post',status:'posted',facebook_post_id:d.id});res.json({success:true,post_url:`https://facebook.com/${d.id}`});}
+  const https=require('https');const qs=require('querystring');
+  const body=qs.stringify({access_token:config.facebook.accessToken,message});
+  const d=await new Promise((resolve,reject)=>{
+    const r=https.request('https://graph.facebook.com/v21.0/me/feed',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Content-Length':Buffer.byteLength(body)}},resp=>{let d='';resp.on('data',c=>d+=c);resp.on('end',()=>{try{resolve(JSON.parse(d))}catch(e){reject(e)}});});
+    r.on('error',reject);r.write(body);r.end();
+  });
+  if(d.id){await db.savePost({content:message,type:'post',status:'posted',facebook_post_id:d.id});res.json({success:true,post_url:`https://facebook.com/${d.id}`});}
   else res.status(500).json({error:'Facebook error',raw:d});
 }catch(e){res.status(500).json({error:e.message})}});
 
