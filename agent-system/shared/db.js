@@ -6,7 +6,6 @@ const { createClient } = require('@supabase/supabase-js');
 const supabase = createClient(config.supabase.url, config.supabase.serviceKey, { auth: { persistSession: false } });
 
 const POOLER_HOST = 'aws-0-us-east-1.pooler.supabase.com';
-const POOLER_PORT = 6543;
 
 let pool;
 function getPool() {
@@ -14,7 +13,8 @@ function getPool() {
     const pwd = process.env.SUPABASE_DATABASE_PASSWORD;
     if (!pwd) throw new Error('SUPABASE_DATABASE_PASSWORD not set');
     const ref = (config.supabase.url || '').replace('https://', '').split('.')[0];
-    const connStr = `postgresql://postgres.${ref}:${encodeURIComponent(pwd)}@${POOLER_HOST}:${POOLER_PORT}/postgres`;
+    // Try pooler with postgres user (session mode on 5432)
+    const connStr = `postgresql://postgres:${encodeURIComponent(pwd)}@${POOLER_HOST}:5432/postgres`;
     pool = new Pool({ connectionString: connStr, ssl: { rejectUnauthorized: false }, max: 3 });
   }
   return pool;
