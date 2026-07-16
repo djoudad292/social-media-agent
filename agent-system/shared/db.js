@@ -148,10 +148,7 @@ async function initDatabase() {
       );
     `);
     console.log('Database tables initialized successfully');
-    // Insert default pause_state row if not exists
     await client.query(`INSERT INTO pause_state (id, paused) VALUES (1, false) ON CONFLICT (id) DO NOTHING`);
-    // Reload PostgREST schema cache so it can see the new tables
-    await client.query(`NOTIFY pgrst, 'reload schema'`);
     await client.end();
   } catch (e) {
     console.error('Database init error:', e.message);
@@ -159,4 +156,17 @@ async function initDatabase() {
   }
 }
 
-module.exports = { supabase, savePost, getPosts, getRecentPosts, saveTrending, getLatestTrends, saveAnalytics, getAnalytics, getPauseState, setPauseState, saveLead, saveStrategy, addToQueue, getQueue, getDueItems, markPosted, removeFromQueue, queueStats, initDatabase };
+async function reloadSchema() {
+  const pwd = process.env.SUPABASE_DATABASE_PASSWORD;
+  const ref = (config.supabase.url || '').replace('https://', '').split('.')[0];
+  if (!pwd || !ref) return;
+  const c = new Client({ connectionString: `postgresql://postgres:${encodeURIComponent(pwd)}@db.${ref}.supabase.co:5432/postgres`, ssl: { rejectUnauthorized: false } });
+  try {
+    await c.connect();
+    await c.query(`NOTIFY pgrst, 'reload schema'`);
+    await c.query(`SELECT pg_notify('pgrst', 'reload schema')`);
+    await c.end();
+  } catch (e) { try { await c.end(); } catch {} }
+}
+
+module.exports = { supabase, savePost, getPosts, getRecentPosts, saveTrending, getLatestTrends, saveAnalytics, getAnalytics, getPauseState, setPauseState, saveLead, saveStrategy, addToQueue, getQueue, getDueItems, markPosted, removeFromQueue, queueStats, initDatabase, reloadSchema };
