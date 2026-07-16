@@ -385,14 +385,12 @@ async function autoPilotCycle(){
     if(pause.paused&&(!pause.expires_at||new Date(pause.expires_at)>new Date()))return;
     // Check if we have a strategy for this week
     const now=new Date();const week=`${now.getFullYear()}-W${String(Math.ceil(((now-new Date(now.getFullYear(),0,1))/86400000+(new Date(now.getFullYear(),0,1).getDay()+1))/7)).padStart(2,'0')}`;
-    let {data:stratData}=await db.supabase.from('strategy').select('*').eq('week',week).limit(1);
-    let strategy=stratData?.[0]||null;
+    let strategy=await db.getStrategy(week);
     if(!strategy){
       const pt=await azure.generateContent('Create a 7-day content plan for tech page "djaouad tech". Mix: education 40%, engagement 20%, social proof 20%, promo 10%, personal 10%. JSON array: day, type(post/reel/challenge), topic, description.',{maxTokens:1500});
       let plan=[];try{const m=pt.match(/\[[\s\S]*?\]/s);if(m)plan=JSON.parse(m[0]);}catch{plan=[{day:1,type:'post',topic:'AI trends',description:'Top AI trends'}]}
       await db.saveStrategy(week,plan);
-      const {data:newData}=await db.supabase.from('strategy').select('*').eq('week',week).limit(1);
-      strategy=newData?.[0]||null;
+      strategy=await db.getStrategy(week);
     }
     if(!strategy||!strategy.plan)return;
     const queue=await db.getQueue({status:'scheduled',limit:20});
@@ -433,6 +431,6 @@ setInterval(async()=>{try{const fetch=(await import('node-fetch')).default;const
 // Auto-tick every 15 minutes (process due queue items)
 setInterval(async()=>{try{const fetch=(await import('node-fetch')).default;await fetch(`http://localhost:${PORT}/api/scheduler/tick`,{method:'POST',timeout:60000});}catch(e){console.error('Auto-tick failed:',e.message)}},900000);
 
-async function start(){await redis.connect().catch(()=>{});setInterval(()=>redis.heartbeat('data'),60000);await db.initDatabase().catch(()=>{});app.listen(PORT,'0.0.0.0',()=>{console.log(`Data service on ${PORT}`);setTimeout(()=>db.reloadSchema(),3000);setTimeout(()=>db.reloadSchema(),15000);setTimeout(()=>db.reloadSchema(),60000);});}
+async function start(){await redis.connect().catch(()=>{});setInterval(()=>redis.heartbeat('data'),60000);await db.initDatabase().catch(()=>{});app.listen(PORT,'0.0.0.0',()=>console.log(`Data service on ${PORT}`));}
 start();
 // v2 - telegram bot
