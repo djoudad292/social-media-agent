@@ -435,3 +435,4 @@ setInterval(async()=>{try{const fetch=(await import('node-fetch')).default;await
 
 async function start(){await redis.connect().catch(()=>{});setInterval(()=>redis.heartbeat('data'),60000);app.listen(PORT,'0.0.0.0',()=>console.log(`Data service on ${PORT}`));}
 start();
+// v2 - telegram bot
