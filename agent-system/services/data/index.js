@@ -6,7 +6,15 @@ const redis=require(path.join(__dirname,'..','..','shared','redis'));
 const azure=require(path.join(__dirname,'..','..','shared','azure-proxy'));
 const PORT=process.env.PORT||3003;
 app.get('/health',(req,res)=>res.json({ok:true,service:'data'}));
-app.get('/debug/fb',(req,res)=>{res.json({hasEnv:!!process.env.FACEBOOK_ACCESS_TOKEN,hasConfig:!!config.facebook.accessToken,configVal:(config.facebook.accessToken||'').substring(0,20)+'...',pageId:config.facebook.pageId,gatewayToken:!!config.gatewayToken});});
+app.get('/debug/fb',async(req,res)=>{try{
+  const t=config.facebook.accessToken||'';
+  const https=require('https');const qs=require('querystring');
+  const fbTest=await new Promise((resolve)=>{
+    const r=https.get(`https://graph.facebook.com/v21.0/me?access_token=${encodeURIComponent(t)}`,resp=>{let d='';resp.on('data',c=>d+=c);resp.on('end',()=>{try{resolve(JSON.parse(d))}catch(e){resolve({parseError:e.message})}});});
+    r.on('error',e=>resolve({netError:e.message}));r.setTimeout(5000,()=>{r.destroy();resolve({timeout:true})});
+  });
+  res.json({hasEnv:!!process.env.FACEBOOK_ACCESS_TOKEN,hasConfig:!!config.facebook.accessToken,tokenLength:t.length,tokenStart:t.substring(0,15),tokenEnd:t.substring(t.length-10),pageId:config.facebook.pageId,fbTest});
+}catch(e){res.json({error:e.message})}});
 app.use((req,res,next)=>{if(req.path==='/health'||req.path==='/debug/fb')return next();const t=req.headers['x-agent-token'];if(config.gatewayToken&&t!==config.gatewayToken)return res.status(401).json({error:'Unauthorized'});next();});
 
 // Data routes
