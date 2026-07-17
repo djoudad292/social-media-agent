@@ -137,3 +137,5 @@ services:
         sync: false
       - key: PIXABAY_API_KEY
         sync: false
+      - key: DAILY_TOKEN_BUDGET
+        sync: false
