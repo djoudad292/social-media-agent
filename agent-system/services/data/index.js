@@ -86,16 +86,10 @@ function execAsync(cmd, opts = {}) {
 
 async function generateReelScript(topic, caption) {
   const prompt =
-    `You are a voiceover scriptwriter for a tech reel. ` +
-    `Write a natural, engaging spoken script about: ${topic}. ` +
-    `Rules:\n` +
-    `- Conversational and energetic, like a TikTok/Reels voiceover\n` +
-    `- Each sentence or phrase ends with "..." for dramatic pauses\n` +
-    `- Hook the viewer in the first sentence (question or surprising fact)\n` +
-    `- Speak directly to the viewer (use "you")\n` +
-    `- Do NOT use hashtags or emojis\n` +
-    `- Do NOT repeat this caption word-for-word: "${caption}"\n` +
-    `- Make it as long as it needs to be — cover the topic naturally`;
+    `Reel voiceover about ${topic}. ` +
+    `Conversational, energetic. End sentences with "...". ` +
+    `Hook first sentence. Use "you". No hashtags/emojis. ` +
+    `Don't repeat: "${caption}"`;
   let script = caption.length > 10 ? `${caption.slice(0, 60)}... like and follow!` : `Check this out... ${topic}... mind blown.`;
   try {
     const gen = await azure.generateContent(prompt, { maxTokens: 1000 });
@@ -788,14 +782,12 @@ app.post('/api/content/researched', async (req, res) => {
     );
     const wt = wr.ok ? await wr.text() : '';
     const sources = [
-      ...articles.map(a => `- ${safeStr(a.title)}: ${safeStr(a.description) || '(no summary)'}`),
-      `- Web research: ${truncate(wt, 1000)}`,
+      ...articles.map(a => `- ${safeStr(a.title)}: ${truncate(safeStr(a.description), 100) || ''}`),
+      `- Web: ${truncate(wt, 400)}`,
     ].join('\n');
     const content = await azure.generateContent(
-      `Write a genuine, evidence-based Facebook post about: ${q}\n\n` +
-      `Use these real sources to write something substantive (200-400 words):\n${sources}\n\n` +
-      `Include 3-5 relevant hashtags and end with a CTA. Focus on real examples, avoid hype.`,
-      { systemPrompt: 'Tech writer. Evidence-based, conversational, no buzzwords.', maxTokens: 1200 }
+      `Post: ${q}\nSources:\n${sources}`,
+      { systemPrompt: 'Evidence-based tech post. 200-400 words. 3-5 hashtags. CTA. No hype.', maxTokens: 800 }
     );
     res.json({
       content,
@@ -1520,7 +1512,7 @@ app.post('/api/reel/post', async (req, res) => {
 let autoPilotInterval = null;
 let tickInterval = null;
 let scrapeInterval = null;
-const AUTOPILOT_INTERVAL = 3600000;
+const AUTOPILOT_INTERVAL = 7200000;
 
 async function autoPilotCycle() {
   try {
@@ -1547,11 +1539,10 @@ async function autoPilotCycle() {
         ? `\nTrending topics right now:\n${trendTopics.map(t => `- ${t}`).join('\n')}`
         : '';
       const pt = await azure.generateContent(
-        `Create a 7-day content plan for tech page "djaouad tech" based on these current trends:${trendContext}` +
-        '\n\nMix: education 40%, engagement 20%, social proof 20%, promo 10%, personal 10%.' +
-        ' Each item must reference a real trend or news topic.' +
-        ' JSON array: day, type(post/reel/thread), topic, description.',
-        { maxTokens: 1500 }
+        `7-day content plan for tech page:${trendContext}` +
+        '\nMix: edu40% engage20% social20% promo10% personal10%.' +
+        ' JSON: [{day,type(post/reel/thread),topic,description}]',
+        { maxTokens: 1000 }
       );
       let plan = [];
       try {
@@ -1568,7 +1559,7 @@ async function autoPilotCycle() {
     }
     if (!strategy || !strategy.plan) return;
     const queue = await db.getQueue({ status: 'scheduled', limit: 20 });
-    if (queue.length >= 5) return;
+    if (queue.length >= 8) return;
     const processedTopics = new Set(queue.map(i => i.topic));
     for (const day of strategy.plan.slice(0, 7)) {
       const topic = day.topic
@@ -1583,26 +1574,16 @@ async function autoPilotCycle() {
         );
         const nd = nr.ok ? await nr.json() : {};
         const articles = (nd?.articles || []).slice(0, 3);
-        const wr = await fetch(
-          `https://s.jina.ai/${encodeURIComponent(topic)}`,
-          { headers: { Authorization: `Bearer ${config.jina.key}` }, signal: AbortSignal.timeout(15000) }
-        );
-        const wt = wr.ok ? await wr.text() : '';
-        const sources = [
-          ...articles.map(a => `- ${safeStr(a.title)}: ${safeStr(a.description) || ''}`),
-          `- Web: ${truncate(wt, 800)}`,
-        ].join('\n');
+        const sources = articles.map(a => `- ${safeStr(a.title)}`).join('\n');
         if (day.type === 'reel') {
           content = await azure.generateContent(
-            `Write a 15-second reel script about: ${topic}\n\nUse these real sources:\n${sources}\n\n` +
-            `Script format: 3-4 short visual scenes with voiceover cues. Under 250 characters total. 3-5 hashtags.`,
-            { systemPrompt: 'Short-form video scriptwriter.', maxTokens: 500 }
+            `Reel script: ${topic}\nSources:\n${sources}`,
+            { systemPrompt: 'Short video script. Under 250 chars. 3-5 hashtags.', maxTokens: 300 }
           );
         } else {
           content = await azure.generateContent(
-            `Write a genuine, evidence-based Facebook post about: ${topic}\n\nUse these real sources:\n${sources}\n\n` +
-            `200-400 words. 3-5 hashtags. CTA at end. Real examples only, no generic fluff.`,
-            { systemPrompt: 'Tech writer. Evidence-based.', maxTokens: 1200 }
+            `Facebook post: ${topic}\nSources:\n${sources}`,
+            { systemPrompt: 'Tech post. 200-400 words. CTA. 3-5 hashtags.', maxTokens: 800 }
           );
         }
       } catch (e) {
