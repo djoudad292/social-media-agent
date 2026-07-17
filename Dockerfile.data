@@ -6,4 +6,4 @@ COPY agent-system/shared/ /app/shared/
 COPY agent-system/services/data/ /app/services/data/
 RUN npm install --production
 EXPOSE 3003
-CMD ["node","services/data/index.js"]
+CMD ["node", "services/data/index.js"]

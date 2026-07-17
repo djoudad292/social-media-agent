@@ -2,6 +2,14 @@
   "name": "agent-system",
   "version": "1.0.0",
   "private": true,
+  "scripts": {
+    "start:data": "node services/data/index.js",
+    "start:content": "node services/content/index.js",
+    "start:media": "node services/media/index.js",
+    "start:gateway": "node services/gateway/sidecar.js",
+    "test": "node test/index.test.js",
+    "lint": "node -c services/data/index.js && node -c services/content/index.js && node -c services/media/index.js && node -c services/gateway/sidecar.js && node -c shared/config.js && node -c shared/redis.js && node -c shared/db.js && node -c shared/azure-proxy.js"
+  },
   "dependencies": {
     "express": "^4.18.2",
     "@supabase/supabase-js": "^2.39.0",

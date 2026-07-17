@@ -23,6 +23,8 @@ services:
         sync: false
       - key: TELEGRAM_BOT_TOKEN
         sync: false
+      - key: GATEWAY_TOKEN
+        sync: false
       - key: OPENCLAW_GATEWAY_TOKEN
         sync: false
       - key: FACEBOOK_ACCESS_TOKEN
@@ -67,6 +69,8 @@ services:
         sync: false
       - key: GEMINI_API_KEY
         sync: false
+      - key: GATEWAY_TOKEN
+        sync: false
 
   # ─── Account 3: Media (Reels + TTS + FFmpeg) ───
   - type: web
@@ -95,6 +99,8 @@ services:
         sync: false
       - key: PEXELS_API_KEY
         sync: false
+      - key: GATEWAY_TOKEN
+        sync: false
 
   # ─── Account 4: Data (Scraper + Analytics + Leads + FB Post) ───
   - type: web
@@ -122,4 +128,6 @@ services:
       - key: FACEBOOK_PAGE_ID
         sync: false
       - key: JINA_API_KEY
+        sync: false
+      - key: GATEWAY_TOKEN
         sync: false
