@@ -270,19 +270,7 @@ async function searchBackgroundMusic(topic) {
   return generateAmbientTrack();
 }
 
-function findHookText(script) {
-  if (!script || script.length < 5) return '';
-  const sentences = script.split(/\.\.\./g).map(s => s.trim()).filter(Boolean);
-  const first = sentences[0] || script;
-  const clean = first
-    .replace(/^(Did you know|Have you heard|Imagine|Think about|What if|Here.s why|The truth is)[,\s]*/i, '')
-    .replace(/[.!?]$/, '')
-    .trim();
-  if (clean.length < 5 || clean.length > 60) return '';
-  return clean;
-}
-
-async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, hookText, segments) {
+async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, segments) {
   if (!Array.isArray(videoBuffers)) videoBuffers = [videoBuffers];
   if (videoBuffers.length === 0) throw new Error('No video buffers');
   const now = Date.now();
@@ -316,11 +304,9 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, hookT
   try {
     const hasMultipleClips = clipPaths.length >= 2;
     const hasMusic = !!musicPath;
-    const hasHook = !!hookText && hookText.length >= 3;
     const hasSubtitles = !!subtitlePath;
 
-    if (!hasSubtitles && !hasHook && !hasMultipleClips) {
-      // Simple path: no subs, no hook, single clip → -c:v copy
+    if (!hasSubtitles && !hasMultipleClips) {
       let cmd;
       if (hasMusic) {
         cmd =
@@ -336,9 +322,7 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, hookT
       return fs.readFileSync(outputPath);
     }
 
-    // Complex path: needs re-encode
     const inputs = clipPaths.map(p => `-i ${p}`).join(' ');
-    const safeHook = hookText.replace(/[^a-zA-Z0-9 .,!?-]/g, '').substring(0, 55);
     const voiceIdx = clipPaths.length;
     const musicIdx = clipPaths.length + 1;
 
@@ -359,13 +343,7 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, hookT
           secondInput = '[clip2s]';
         }
       } catch {}
-      if (hasHook) {
-        vFilter = scaleLine + `[0:v]drawtext=text='${safeHook}':enable='between(t,0,3)':fontfile=/usr/share/fonts/dejavu/DejaVuSans.ttf:fontsize=26:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=8:x=(w-text_w)/2:y=h*0.15[v0];` + `[v0]` + secondInput + `xfade=offset=4.5:duration=0.5:transition=fade[video]`;
-      } else {
-        vFilter = `${scaleLine}[0:v]trim=0:4.5,setpts=PTS-STARTPTS[v0];${secondInput}trim=0:15,setpts=PTS-STARTPTS[clip2];[v0][clip2]xfade=offset=4.5:duration=0.5:transition=fade,setpts=PTS-STARTPTS[video]`;
-      }
-    } else {
-      vFilter = `[0:v]drawtext=text='${safeHook}':enable='between(t,0,3)':fontfile=/usr/share/fonts/dejavu/DejaVuSans.ttf:fontsize=26:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=8:x=(w-text_w)/2:y=h*0.15[video]`;
+      vFilter = `${scaleLine}[0:v]trim=0:4.5,setpts=PTS-STARTPTS[v0];${secondInput}trim=0:15,setpts=PTS-STARTPTS[clip2];[v0][clip2]xfade=offset=4.5:duration=0.5:transition=fade,setpts=PTS-STARTPTS[video]`;
     }
 
     if (hasSubtitles) {
@@ -1390,8 +1368,7 @@ app.post('/api/scheduler/tick', async (req, res) => {
                 const speechScript = await generateReelScript(topic, caption);
                 const { audioBuffer, segments } = await generateTTSWithPauses(speechScript);
                 const musicBuffer = await searchBackgroundMusic(topic);
-                const hookText = findHookText(speechScript);
-                const finalVideo = await composeReelFull(vbs, audioBuffer, musicBuffer, hookText, segments);
+                const finalVideo = await composeReelFull(vbs, audioBuffer, musicBuffer, segments);
                 const fn = `reels/${Date.now()}.mp4`;
                 const vu = await db.uploadToSupabase('media', fn, finalVideo, 'video/mp4');
                 if (!vu) throw new Error('Upload returned empty URL');
@@ -1494,8 +1471,7 @@ app.post('/api/reel/post', async (req, res) => {
       const speechScript = await generateReelScript(topic, content);
       const { audioBuffer, segments } = await generateTTSWithPauses(speechScript);
       const musicBuffer = await searchBackgroundMusic(topic);
-      const hookText = findHookText(speechScript);
-      const finalVideo = await composeReelFull(vbs, audioBuffer, musicBuffer, hookText, segments);
+      const finalVideo = await composeReelFull(vbs, audioBuffer, musicBuffer, segments);
       const fn = `reels/${Date.now()}.mp4`;
       const vu = await db.uploadToSupabase('media', fn, finalVideo, 'video/mp4');
       if (!vu) throw new Error('Upload returned empty URL');
@@ -1503,7 +1479,7 @@ app.post('/api/reel/post', async (req, res) => {
       if (fbRes.id) {
         try { await db.savePost({ content, topic, type: 'reel', status: 'posted', facebook_post_id: fbRes.id }); }
         catch (e) { log('error', 'Reel savePost failed', { error: e.message, rid: req.id }); }
-        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: true, has_music: !!musicBuffer, has_hook: !!hookText });
+        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: true, has_music: !!musicBuffer });
       } else {
         res.json({ error: 'Facebook video error', raw: fbRes, video_url: vu });
       }
