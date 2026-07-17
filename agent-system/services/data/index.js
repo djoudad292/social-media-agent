@@ -193,13 +193,9 @@ async function generateSRT(segments, totalDuration) {
 async function generateAmbientTrack() {
   const outPath = `${TMP}/ambient_${Date.now()}.mp3`;
   await execAsync(
-    `ffmpeg -y -f lavfi -i sine=frequency=220:duration=30 ` +
-    `-f lavfi -i sine=frequency=275:duration=30 ` +
-    `-f lavfi -i sine=frequency=330:duration=30 ` +
-    `-filter_complex ` +
-    `"[0:a]volume=0.03[a];[1:a]volume=0.02[b];[2:a]volume=0.015[c];` +
-    `[a][b][c]amix=inputs=3:duration=first[out]" ` +
-    `-map "[out]" -ac 1 ${outPath}`,
+    `ffmpeg -y -f lavfi -i ` +
+    `"aevalsrc=exprs='0.03*sin(2*PI*220*t)+0.02*sin(2*PI*275*t)+0.015*sin(2*PI*330*t)':d=30" ` +
+    `-ac 1 ${outPath}`,
     { timeout: 15000 }
   );
   const buf = fs.readFileSync(outPath);
@@ -380,9 +376,6 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, hookT
         `-shortest -movflags +faststart -y ${outputPath}`;
       await execAsync(cmd, { timeout: 180000 });
     }
-    return fs.readFileSync(outputPath);
-
-    await execAsync(cmd, { timeout: 180000 });
     return fs.readFileSync(outputPath);
   } finally {
     for (const p of clipPaths) try { fs.unlinkSync(p); } catch {}
@@ -1388,7 +1381,7 @@ app.post('/api/scheduler/tick', async (req, res) => {
                 if (!vu) throw new Error('Upload returned empty URL');
                 postResult = await fbVideoPost(vu, caption);
               } catch (e) {
-                log('error', 'TTS reel failed, falling back to silent', { error: e.message, rid });
+                log('error', 'TTS reel failed, falling back to silent', { error: e.message, rid, topic });
                 const fn = `reels/${Date.now()}.mp4`;
                 const vu = await db.uploadToSupabase('media', fn, vbs[0], 'video/mp4');
                 if (!vu) throw new Error('Upload returned empty URL');
