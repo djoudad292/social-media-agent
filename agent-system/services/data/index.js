@@ -315,54 +315,42 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, hookT
 
     // Complex path: hook text and/or multi-clip → needs re-encode
     const inputs = clipPaths.map(p => `-i ${p}`).join(' ');
-    const escapedHook = hookText
-      .replace(/'/g, "'\\\\\\''")
-      .replace(/:/g, '\\:')
-      .replace(/'/g, "\\'");
+    // safe hook text: alphanumeric + common punctuation (no quotes to avoid shell escaping)
+    const safeHook = hookText.replace(/[^a-zA-Z0-9 .,!?-]/g, '').substring(0, 55);
     const voiceIdx = clipPaths.length;
     const musicIdx = clipPaths.length + 1;
 
-    let filter = '';
-
+    let vFilter = '';
     if (hasMultipleClips) {
-      // Multi-clip with xfade + optional hook
       if (hasHook) {
-        filter =
-          `[0:v]drawtext=enable='between(t,0,3)':text='${escapedHook}'` +
-          `:fontsize=26:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=8` +
-          `:x=(w-text_w)/2:y=h*0.15[v0];` +
-          `[v0][1:v]xfade=offset=4.5:duration=0.5:transition=fade[video]`;
+        vFilter = `[0:v]drawtext=text='${safeHook}':enable='between(t,0,3)':fontsize=26:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=8:x=(w-text_w)/2:y=h*0.15[v0];[v0][1:v]xfade=offset=4.5:duration=0.5:transition=fade[video]`;
       } else {
-        filter =
-          `[0:v]trim=0:4.5,setpts=PTS-STARTPTS[v0];` +
-          `[1:v]trim=0:15,setpts=PTS-STARTPTS[v1];` +
-          `[v0][v1]xfade=offset=4.5:duration=0.5:transition=fade,setpts=PTS-STARTPTS[video]`;
+        vFilter = `[0:v]trim=0:4.5,setpts=PTS-STARTPTS[v0];[1:v]trim=0:15,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=offset=4.5:duration=0.5:transition=fade,setpts=PTS-STARTPTS[video]`;
       }
     } else {
-      // Single clip with hook
-      filter =
-        `[0:v]drawtext=enable='between(t,0,3)':text='${escapedHook}'` +
-        `:fontsize=26:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=8` +
-        `:x=(w-text_w)/2:y=h*0.15[video]`;
+      vFilter = `[0:v]drawtext=text='${safeHook}':enable='between(t,0,3)':fontsize=26:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=8:x=(w-text_w)/2:y=h*0.15[video]`;
     }
 
-    // Audio
     if (hasMusic) {
-      filter += `;` +
-        `[${voiceIdx}:a]volume=1.0[a1];` +
-        `[${musicIdx}:a]volume=0.12,aloop=1:size=0:loop=-1[a2];` +
-        `[a1][a2]amix=inputs=2:duration=first[audio]`;
+      const aFilter = `[${voiceIdx}:a]volume=1.0[a1];[${musicIdx}:a]volume=0.12,aloop=loop=-1:size=0[a2];[a1][a2]amix=inputs=2:duration=first[audio]`;
+      const cmd =
+        `ffmpeg ${inputs} -i ${voicePath} -i ${musicPath} ` +
+        `-filter_complex "${vFilter};${aFilter}" ` +
+        `-map "[video]" -map "[audio]" ` +
+        `-c:v libx264 -preset ultrafast -crf 28 -c:a aac ` +
+        `-shortest -movflags +faststart -y ${outputPath}`;
+      await execAsync(cmd, { timeout: 180000 });
     } else {
-      filter += `;[${voiceIdx}:a]acopy[audio]`;
+      // No music: video through filter, audio mapped directly
+      const cmd =
+        `ffmpeg ${inputs} -i ${voicePath} ` +
+        `-filter_complex "${vFilter}" ` +
+        `-map "[video]" -map ${voiceIdx}:a ` +
+        `-c:v libx264 -preset ultrafast -crf 28 -c:a aac ` +
+        `-shortest -movflags +faststart -y ${outputPath}`;
+      await execAsync(cmd, { timeout: 180000 });
     }
-
-    const audioInputs = `-i ${voicePath}${hasMusic ? ` -i ${musicPath}` : ''}`;
-    const cmd =
-      `ffmpeg ${inputs} ${audioInputs} ` +
-      `-filter_complex "${filter}" ` +
-      `-map "[video]" -map "[audio]" ` +
-      `-c:v libx264 -preset ultrafast -crf 28 -c:a aac ` +
-      `-shortest -movflags +faststart -y ${outputPath}`;
+    return fs.readFileSync(outputPath);
 
     await execAsync(cmd, { timeout: 180000 });
     return fs.readFileSync(outputPath);
