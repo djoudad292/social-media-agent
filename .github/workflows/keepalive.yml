@@ -1,0 +1,11 @@
+name: Keepalive
+on:
+  schedule:
+    - cron: '*/12 * * * *'
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger tick (keepalive + process queue)
+        run: curl -s -X POST --max-time 120 -H "x-agent-token: 960a514e1704ec940b93d7823c08a60360fb11c784bea75a" "https://agent-data-1qw0.onrender.com/api/scheduler/tick"
