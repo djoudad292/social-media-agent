@@ -190,22 +190,96 @@ async function generateSRT(segments, totalDuration) {
   function pad(n, w = 2) { return String(n).padStart(w, '0'); }
 }
 
-async function composeReelFull(videoBuffer, audioBuffer) {
+async function searchBackgroundMusic(topic) {
+  const fetch = globalThis.fetch || (await import('node-fetch')).default;
+  if (!config.pixabay.key) {
+    log('warn', 'No Pixabay key, skipping background music');
+    return null;
+  }
+  const musicQueries = [
+    `upbeat+${encodeURIComponent(topic.split(' ').slice(0,2).join('+'))}`,
+    'upbeat+technology+background',
+    'corporate+ambient+music',
+    'inspiring+background+music',
+  ];
+  for (const q of musicQueries) {
+    try {
+      const res = await fetch(
+        `https://pixabay.com/api/videos/?key=${config.pixabay.key}&q=${q}&video_type=film&per_page=5`,
+        { signal: AbortSignal.timeout(10000) }
+      );
+      if (!res.ok) continue;
+      const data = await res.json();
+      const hits = data?.hits || [];
+      // prefer videos 10-30s long
+      const hit = hits.find(h => h.duration >= 10 && h.duration <= 40) || hits[0];
+      if (!hit) continue;
+      const vf = hit.videos?.medium || hit.videos?.small;
+      if (!vf?.url) continue;
+      const vr = await fetch(vf.url, { signal: AbortSignal.timeout(20000) });
+      if (!vr.ok) continue;
+      const rawBuf = Buffer.from(await vr.arrayBuffer());
+      // extract audio from the downloaded video
+      const musicVideoPath = `${TMP}/music_${Date.now()}.mp4`;
+      const musicAudioPath = `${TMP}/music_${Date.now()}.mp3`;
+      try {
+        fs.writeFileSync(musicVideoPath, rawBuf);
+        await execAsync(
+          `ffprobe -v error -show_entries stream=codec_type -of default=noprint_wrappers=1:nokey=1 ${musicVideoPath}`,
+          { timeout: 5000 }
+        );
+        try {
+          await execAsync(
+            `ffmpeg -i ${musicVideoPath} -vn -c:a libmp3lame -q:a 8 ${musicAudioPath}`,
+            { timeout: 15000 }
+          );
+        } catch {
+          // audio extraction failed, try with acodec copy
+          await execAsync(
+            `ffmpeg -i ${musicVideoPath} -vn -c:a copy ${musicAudioPath}`,
+            { timeout: 15000 }
+          );
+        }
+        const audioBuf = fs.readFileSync(musicAudioPath);
+        log('info', 'Background music fetched', { query: q, duration: hit.duration, tags: hit.tags });
+        return audioBuf;
+      } finally {
+        try { fs.unlinkSync(musicVideoPath); } catch {}
+        try { fs.unlinkSync(musicAudioPath); } catch {}
+      }
+    } catch (e) {
+      log('warn', 'Music search query failed', { query: q, error: e.message });
+    }
+  }
+  return null;
+}
+
+async function composeReelFull(videoBuffer, voiceoverBuffer, musicBuffer) {
   const videoPath = `${TMP}/reel_${Date.now()}.mp4`;
-  const audioPath = `${TMP}/reel_${Date.now()}.mp3`;
+  const voicePath = `${TMP}/reel_${Date.now()}.mp3`;
+  const musicPath = `${TMP}/reel_${Date.now()}_bg.mp3`;
   const outputPath = `${TMP}/reel_${Date.now()}_out.mp4`;
   try {
     fs.writeFileSync(videoPath, videoBuffer);
-    fs.writeFileSync(audioPath, audioBuffer);
-    await execAsync(
-      `ffmpeg -i ${videoPath} -i ${audioPath} -c:v copy -c:a aac ` +
-      `-map 0:v:0 -map 1:a:0 -shortest -movflags +faststart -y ${outputPath}`,
-      { timeout: 60000 }
-    );
+    fs.writeFileSync(voicePath, voiceoverBuffer);
+    let cmd;
+    if (musicBuffer && musicBuffer.length > 1000) {
+      fs.writeFileSync(musicPath, musicBuffer);
+      cmd =
+        `ffmpeg -i ${videoPath} -i ${voicePath} -stream_loop -1 -i ${musicPath} ` +
+        `-filter_complex "[1:a]volume=1.0[a1];[2:a]volume=0.12[a2];[a1][a2]amix=inputs=2:duration=first[audio]" ` +
+        `-c:v copy -map 0:v -map "[audio]" -shortest -movflags +faststart -y ${outputPath}`;
+    } else {
+      cmd =
+        `ffmpeg -i ${videoPath} -i ${voicePath} -c:v copy -c:a aac ` +
+        `-map 0:v:0 -map 1:a:0 -shortest -movflags +faststart -y ${outputPath}`;
+    }
+    await execAsync(cmd, { timeout: 120000 });
     return fs.readFileSync(outputPath);
   } finally {
     try { fs.unlinkSync(videoPath); } catch {}
-    try { fs.unlinkSync(audioPath); } catch {}
+    try { fs.unlinkSync(voicePath); } catch {}
+    try { fs.unlinkSync(musicPath); } catch {}
     try { fs.unlinkSync(outputPath); } catch {}
   }
 }
@@ -1193,7 +1267,8 @@ app.post('/api/scheduler/tick', async (req, res) => {
               try {
                 const speechScript = await generateReelScript(topic, caption);
                 const { audioBuffer } = await generateTTSWithPauses(speechScript);
-                const finalVideo = await composeReelFull(vb, audioBuffer);
+                const musicBuffer = await searchBackgroundMusic(topic);
+                const finalVideo = await composeReelFull(vb, audioBuffer, musicBuffer);
                 const fn = `reels/${Date.now()}.mp4`;
                 const vu = await db.uploadToSupabase('media', fn, finalVideo, 'video/mp4');
                 if (!vu) throw new Error('Upload returned empty URL');
@@ -1279,7 +1354,8 @@ app.post('/api/reel/post', async (req, res) => {
     try {
       const speechScript = await generateReelScript(topic, content);
       const { audioBuffer } = await generateTTSWithPauses(speechScript);
-      const finalVideo = await composeReelFull(vb, audioBuffer);
+      const musicBuffer = await searchBackgroundMusic(topic);
+      const finalVideo = await composeReelFull(vb, audioBuffer, musicBuffer);
       const fn = `reels/${Date.now()}.mp4`;
       const vu = await db.uploadToSupabase('media', fn, finalVideo, 'video/mp4');
       if (!vu) throw new Error('Upload returned empty URL');
@@ -1287,7 +1363,7 @@ app.post('/api/reel/post', async (req, res) => {
       if (fbRes.id) {
         try { await db.savePost({ content, topic, type: 'reel', status: 'posted', facebook_post_id: fbRes.id }); }
         catch (e) { log('error', 'Reel savePost failed', { error: e.message, rid: req.id }); }
-        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: true });
+        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: true, has_music: !!musicBuffer });
       } else {
         res.json({ error: 'Facebook video error', raw: fbRes, video_url: vu });
       }

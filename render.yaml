@@ -131,3 +131,5 @@ services:
         sync: false
       - key: GATEWAY_TOKEN
         sync: false
+      - key: PIXABAY_API_KEY
+        sync: false

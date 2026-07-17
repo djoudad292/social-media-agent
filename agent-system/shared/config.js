@@ -45,6 +45,9 @@ const config = {
   pexels: {
     key: env('PEXELS_API_KEY'),
   },
+  pixabay: {
+    key: env('PIXABAY_API_KEY'),
+  },
   jina: {
     key: env('JINA_API_KEY'),
   },
