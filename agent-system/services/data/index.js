@@ -190,25 +190,13 @@ async function generateSRT(segments, totalDuration) {
   function pad(n, w = 2) { return String(n).padStart(w, '0'); }
 }
 
-async function composeReelFull(videoBuffer, audioBuffer, srtContent) {
+async function composeReelFull(videoBuffer, audioBuffer) {
   const videoPath = `${TMP}/reel_${Date.now()}.mp4`;
   const audioPath = `${TMP}/reel_${Date.now()}.mp3`;
-  const srtPath = `${TMP}/reel_${Date.now()}.srt`;
   const outputPath = `${TMP}/reel_${Date.now()}_out.mp4`;
   try {
     fs.writeFileSync(videoPath, videoBuffer);
     fs.writeFileSync(audioPath, audioBuffer);
-    fs.writeFileSync(srtPath, srtContent);
-    await execAsync(
-      `ffmpeg -i ${videoPath} -i ${audioPath} ` +
-      `-vf "subtitles=${srtPath}:force_style='FontSize=13,FontName=Arial,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=1,MarginV=55'" ` +
-      `-c:v libx264 -preset ultrafast -crf 28 -c:a aac -map 0:v:0 -map 1:a:0 -shortest -movflags +faststart -y ${outputPath}`,
-      { timeout: 120000 }
-    );
-    const result = fs.readFileSync(outputPath);
-    return result;
-  } catch (e) {
-    log('warn', 'Subtitle burn failed, falling back to audio-only', { error: e.message });
     await execAsync(
       `ffmpeg -i ${videoPath} -i ${audioPath} -c:v copy -c:a aac ` +
       `-map 0:v:0 -map 1:a:0 -shortest -movflags +faststart -y ${outputPath}`,
@@ -218,7 +206,6 @@ async function composeReelFull(videoBuffer, audioBuffer, srtContent) {
   } finally {
     try { fs.unlinkSync(videoPath); } catch {}
     try { fs.unlinkSync(audioPath); } catch {}
-    try { fs.unlinkSync(srtPath); } catch {}
     try { fs.unlinkSync(outputPath); } catch {}
   }
 }
@@ -1205,13 +1192,8 @@ app.post('/api/scheduler/tick', async (req, res) => {
             } else {
               try {
                 const speechScript = await generateReelScript(topic, caption);
-                const { audioBuffer, segments } = await generateTTSWithPauses(speechScript);
-                const audioPath = `${TMP}/dur_${Date.now()}.mp3`;
-                fs.writeFileSync(audioPath, audioBuffer);
-                const duration = await getAudioDuration(audioPath);
-                fs.unlinkSync(audioPath);
-                const srtContent = await generateSRT(segments, duration);
-                const finalVideo = await composeReelFull(vb, audioBuffer, srtContent);
+                const { audioBuffer } = await generateTTSWithPauses(speechScript);
+                const finalVideo = await composeReelFull(vb, audioBuffer);
                 const fn = `reels/${Date.now()}.mp4`;
                 const vu = await db.uploadToSupabase('media', fn, finalVideo, 'video/mp4');
                 if (!vu) throw new Error('Upload returned empty URL');
@@ -1296,13 +1278,8 @@ app.post('/api/reel/post', async (req, res) => {
     }
     try {
       const speechScript = await generateReelScript(topic, content);
-      const { audioBuffer, segments } = await generateTTSWithPauses(speechScript);
-      const audioPath = `${TMP}/dur_${Date.now()}.mp3`;
-      fs.writeFileSync(audioPath, audioBuffer);
-      const duration = await getAudioDuration(audioPath);
-      fs.unlinkSync(audioPath);
-      const srtContent = await generateSRT(segments, duration);
-      const finalVideo = await composeReelFull(vb, audioBuffer, srtContent);
+      const { audioBuffer } = await generateTTSWithPauses(speechScript);
+      const finalVideo = await composeReelFull(vb, audioBuffer);
       const fn = `reels/${Date.now()}.mp4`;
       const vu = await db.uploadToSupabase('media', fn, finalVideo, 'video/mp4');
       if (!vu) throw new Error('Upload returned empty URL');
@@ -1310,7 +1287,7 @@ app.post('/api/reel/post', async (req, res) => {
       if (fbRes.id) {
         try { await db.savePost({ content, topic, type: 'reel', status: 'posted', facebook_post_id: fbRes.id }); }
         catch (e) { log('error', 'Reel savePost failed', { error: e.message, rid: req.id }); }
-        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_subtitles: true, has_voiceover: true });
+        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: true });
       } else {
         res.json({ error: 'Facebook video error', raw: fbRes, video_url: vu });
       }
@@ -1323,7 +1300,7 @@ app.post('/api/reel/post', async (req, res) => {
       if (fbRes.id) {
         try { await db.savePost({ content, topic, type: 'reel', status: 'posted', facebook_post_id: fbRes.id }); }
         catch (e) { log('error', 'Reel savePost failed', { error: e.message, rid: req.id }); }
-        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: false, has_subtitles: false });
+        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: false });
       } else {
         res.json({ error: 'Facebook video error', raw: fbRes, video_url: vu });
       }
