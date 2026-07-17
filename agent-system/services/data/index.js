@@ -86,24 +86,19 @@ function execAsync(cmd, opts = {}) {
 
 async function generateReelScript(topic, caption) {
   const prompt =
-    `You are a voiceover scriptwriter for a short tech reel. ` +
-    `Write a SHORT conversational speech (max 4 short sentences) about: ${topic}. ` +
+    `You are a voiceover scriptwriter for a tech reel. ` +
+    `Write a natural, engaging spoken script about: ${topic}. ` +
     `Rules:\n` +
-    `- Engaging, energetic, like a TikTok voiceover\n` +
-    `- Each sentence ends with "..." to add a dramatic pause\n` +
-    `- Maximum 80 words total\n` +
-    `- Ask a question or give a surprising fact to hook viewers\n` +
-    `- Do NOT use hashtags\n` +
-    `- Do NOT repeat this caption word-for-word: "${caption}"\n` +
+    `- Conversational and energetic, like a TikTok/Reels voiceover\n` +
+    `- Each sentence or phrase ends with "..." for dramatic pauses\n` +
+    `- Hook the viewer in the first sentence (question or surprising fact)\n` +
     `- Speak directly to the viewer (use "you")\n` +
-    `\n` +
-    `Example format:\n` +
-    `Did you know AI can now run entirely on your phone? ... ` +
-    `No cloud, no internet, just pure on-device power. ... ` +
-    `Sounds futuristic? ... It is already here.`;
+    `- Do NOT use hashtags or emojis\n` +
+    `- Do NOT repeat this caption word-for-word: "${caption}"\n` +
+    `- Make it as long as it needs to be — cover the topic naturally`;
   let script = caption.length > 10 ? `${caption.slice(0, 60)}... like and follow!` : `Check this out... ${topic}... mind blown.`;
   try {
-    const gen = await azure.generateContent(prompt, { maxTokens: 500 });
+    const gen = await azure.generateContent(prompt, { maxTokens: 1000 });
     if (gen && gen.length > 10) script = gen;
   } catch (e) {
     log('warn', 'Script gen failed, using default', { error: e.message });
@@ -287,7 +282,7 @@ function findHookText(script) {
   return clean;
 }
 
-async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, hookText) {
+async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, hookText, segments) {
   if (!Array.isArray(videoBuffers)) videoBuffers = [videoBuffers];
   if (videoBuffers.length === 0) throw new Error('No video buffers');
   const now = Date.now();
@@ -302,14 +297,30 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, hookT
     ? (() => { const p = `${TMP}/music_${now}.mp3`; fs.writeFileSync(p, musicBuffer); return p; })()
     : null;
   const outputPath = `${TMP}/reel_${now}_out.mp4`;
+  let subtitlePath = null;
+  if (Array.isArray(segments) && segments.length > 0) {
+    try {
+      const audioDur = await getAudioDuration(voicePath);
+      if (audioDur > 0) {
+        const srt = generateSRT(segments, audioDur);
+        if (srt) {
+          subtitlePath = `${TMP}/subs_${now}.srt`;
+          fs.writeFileSync(subtitlePath, srt);
+        }
+      }
+    } catch (e) {
+      log('warn', 'Subtitle generation failed', { error: e.message });
+    }
+  }
 
   try {
     const hasMultipleClips = clipPaths.length >= 2;
     const hasMusic = !!musicPath;
     const hasHook = !!hookText && hookText.length >= 3;
+    const hasSubtitles = !!subtitlePath;
 
-    if (!hasHook && !hasMultipleClips) {
-      // Simple path: voiceover only, no hook, single clip → -c:v copy
+    if (!hasSubtitles && !hasHook && !hasMultipleClips) {
+      // Simple path: no subs, no hook, single clip → -c:v copy
       let cmd;
       if (hasMusic) {
         cmd =
@@ -325,16 +336,16 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, hookT
       return fs.readFileSync(outputPath);
     }
 
-    // Complex path: hook text and/or multi-clip → needs re-encode
+    // Complex path: needs re-encode
     const inputs = clipPaths.map(p => `-i ${p}`).join(' ');
-    // safe hook text: alphanumeric + common punctuation (no quotes to avoid shell escaping)
     const safeHook = hookText.replace(/[^a-zA-Z0-9 .,!?-]/g, '').substring(0, 55);
     const voiceIdx = clipPaths.length;
     const musicIdx = clipPaths.length + 1;
 
     let vFilter = '';
+    let videoOutput = 'video';
+
     if (hasMultipleClips) {
-      // Get first clip dimensions and scale clip 2 to match
       let scaleLine = '';
       let secondInput = '[1:v]';
       try {
@@ -357,21 +368,25 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, hookT
       vFilter = `[0:v]drawtext=text='${safeHook}':enable='between(t,0,3)':fontfile=/usr/share/fonts/dejavu/DejaVuSans.ttf:fontsize=26:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=8:x=(w-text_w)/2:y=h*0.15[video]`;
     }
 
+    if (hasSubtitles) {
+      vFilter += `;[video]subtitles=${subtitlePath}:force_style='FontSize=16,FontName=DejaVu Sans,PrimaryColour=&H00FFFFFF,OutlineColour=&H000000,BorderStyle=1,Outline=2,Shadow=0,MarginV=56,Alignment=2'[out]`;
+      videoOutput = 'out';
+    }
+
     if (hasMusic) {
       const aFilter = `[${voiceIdx}:a]volume=1.0[a1];[${musicIdx}:a]volume=0.12,aloop=loop=-1:size=0[a2];[a1][a2]amix=inputs=2:duration=first[audio]`;
       const cmd =
         `ffmpeg ${inputs} -i ${voicePath} -i ${musicPath} ` +
         `-filter_complex "${vFilter};${aFilter}" ` +
-        `-map "[video]" -map "[audio]" ` +
+        `-map "[${videoOutput}]" -map "[audio]" ` +
         `-c:v libx264 -preset ultrafast -crf 28 -c:a aac ` +
         `-shortest -movflags +faststart -y ${outputPath}`;
       await execAsync(cmd, { timeout: 180000 });
     } else {
-      // No music: video through filter, audio mapped directly
       const cmd =
         `ffmpeg ${inputs} -i ${voicePath} ` +
         `-filter_complex "${vFilter}" ` +
-        `-map "[video]" -map ${voiceIdx}:a ` +
+        `-map "[${videoOutput}]" -map ${voiceIdx}:a ` +
         `-c:v libx264 -preset ultrafast -crf 28 -c:a aac ` +
         `-shortest -movflags +faststart -y ${outputPath}`;
       await execAsync(cmd, { timeout: 180000 });
@@ -381,6 +396,7 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, hookT
     for (const p of clipPaths) try { fs.unlinkSync(p); } catch {}
     try { fs.unlinkSync(voicePath); } catch {}
     if (musicPath) try { fs.unlinkSync(musicPath); } catch {}
+    if (subtitlePath) try { fs.unlinkSync(subtitlePath); } catch {}
     try { fs.unlinkSync(outputPath); } catch {}
   }
 }
@@ -1372,10 +1388,10 @@ app.post('/api/scheduler/tick', async (req, res) => {
             } else {
               try {
                 const speechScript = await generateReelScript(topic, caption);
-                const { audioBuffer } = await generateTTSWithPauses(speechScript);
+                const { audioBuffer, segments } = await generateTTSWithPauses(speechScript);
                 const musicBuffer = await searchBackgroundMusic(topic);
                 const hookText = findHookText(speechScript);
-                const finalVideo = await composeReelFull(vbs, audioBuffer, musicBuffer, hookText);
+                const finalVideo = await composeReelFull(vbs, audioBuffer, musicBuffer, hookText, segments);
                 const fn = `reels/${Date.now()}.mp4`;
                 const vu = await db.uploadToSupabase('media', fn, finalVideo, 'video/mp4');
                 if (!vu) throw new Error('Upload returned empty URL');
@@ -1476,10 +1492,10 @@ app.post('/api/reel/post', async (req, res) => {
     }
     try {
       const speechScript = await generateReelScript(topic, content);
-      const { audioBuffer } = await generateTTSWithPauses(speechScript);
+      const { audioBuffer, segments } = await generateTTSWithPauses(speechScript);
       const musicBuffer = await searchBackgroundMusic(topic);
       const hookText = findHookText(speechScript);
-      const finalVideo = await composeReelFull(vbs, audioBuffer, musicBuffer, hookText);
+      const finalVideo = await composeReelFull(vbs, audioBuffer, musicBuffer, hookText, segments);
       const fn = `reels/${Date.now()}.mp4`;
       const vu = await db.uploadToSupabase('media', fn, finalVideo, 'video/mp4');
       if (!vu) throw new Error('Upload returned empty URL');
