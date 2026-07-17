@@ -322,10 +322,24 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, hookT
 
     let vFilter = '';
     if (hasMultipleClips) {
+      // Get first clip dimensions and scale clip 2 to match
+      let scaleLine = '';
+      let secondInput = '[1:v]';
+      try {
+        const dimOut = await execAsync(
+          `ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 ${clipPaths[0]}`,
+          { timeout: 5000 }
+        );
+        const dims = dimOut.trim().split(',').map(Number);
+        if (dims.length === 2 && dims[0] > 0 && dims[1] > 0) {
+          scaleLine = `[1:v]scale=w=${dims[0]}:h=${dims[1]}:force_original_aspect_ratio=decrease,pad=${dims[0]}:${dims[1]}:(ow-iw)/2:(oh-ih)/2:color=black[clip2s];`;
+          secondInput = '[clip2s]';
+        }
+      } catch {}
       if (hasHook) {
-        vFilter = `[0:v]drawtext=text='${safeHook}':enable='between(t,0,3)':fontfile=/usr/share/fonts/dejavu/DejaVuSans.ttf:fontsize=26:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=8:x=(w-text_w)/2:y=h*0.15[v0];[v0][1:v]xfade=offset=4.5:duration=0.5:transition=fade[video]`;
+        vFilter = scaleLine + `[0:v]drawtext=text='${safeHook}':enable='between(t,0,3)':fontfile=/usr/share/fonts/dejavu/DejaVuSans.ttf:fontsize=26:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=8:x=(w-text_w)/2:y=h*0.15[v0];` + `[v0]` + secondInput + `xfade=offset=4.5:duration=0.5:transition=fade[video]`;
       } else {
-        vFilter = `[0:v]trim=0:4.5,setpts=PTS-STARTPTS[v0];[1:v]trim=0:15,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=offset=4.5:duration=0.5:transition=fade,setpts=PTS-STARTPTS[video]`;
+        vFilter = `${scaleLine}[0:v]trim=0:4.5,setpts=PTS-STARTPTS[v0];${secondInput}trim=0:15,setpts=PTS-STARTPTS[clip2];[v0][clip2]xfade=offset=4.5:duration=0.5:transition=fade,setpts=PTS-STARTPTS[video]`;
       }
     } else {
       vFilter = `[0:v]drawtext=text='${safeHook}':enable='between(t,0,3)':fontfile=/usr/share/fonts/dejavu/DejaVuSans.ttf:fontsize=26:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=8:x=(w-text_w)/2:y=h*0.15[video]`;
@@ -1466,7 +1480,7 @@ app.post('/api/reel/post', async (req, res) => {
       if (fbRes.id) {
         try { await db.savePost({ content, topic, type: 'reel', status: 'posted', facebook_post_id: fbRes.id }); }
         catch (e) { log('error', 'Reel savePost failed', { error: e.message, rid: req.id }); }
-        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: false, debug_error: (e && e.message) || 'unknown' });
+        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: false });
       } else {
         res.json({ error: 'Facebook video error', raw: fbRes, video_url: vu });
       }
