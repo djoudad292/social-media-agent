@@ -275,8 +275,12 @@ async function searchBackgroundMusic(topic) {
       }
     }
   }
-  log('info', 'Falling back to generated ambient track');
-  return generateAmbientTrack();
+  try {
+    return await generateAmbientTrack();
+  } catch (e) {
+    log('warn', 'Ambient track generation failed', { error: e.message });
+    return null;
+  }
 }
 
 async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, segments) {
@@ -1486,7 +1490,7 @@ app.post('/api/reel/post', async (req, res) => {
       if (fbRes.id) {
         try { await db.savePost({ content, topic, type: 'reel', status: 'posted', facebook_post_id: fbRes.id }); }
         catch (e) { log('error', 'Reel savePost failed', { error: e.message, rid: req.id }); }
-        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: true, has_music: !!musicBuffer });
+        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: !!audioBuffer, has_music: !!musicBuffer, has_subtitles: true });
       } else {
         res.json({ error: 'Facebook video error', raw: fbRes, video_url: vu });
       }
@@ -1499,7 +1503,7 @@ app.post('/api/reel/post', async (req, res) => {
       if (fbRes.id) {
         try { await db.savePost({ content, topic, type: 'reel', status: 'posted', facebook_post_id: fbRes.id }); }
         catch (e) { log('error', 'Reel savePost failed', { error: e.message, rid: req.id }); }
-        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: false });
+        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, fallback: 'silent' });
       } else {
         res.json({ error: 'Facebook video error', raw: fbRes, video_url: vu });
       }
