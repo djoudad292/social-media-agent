@@ -196,12 +196,13 @@ async function searchBackgroundMusic(topic) {
     log('warn', 'No Pixabay key, skipping background music');
     return null;
   }
+  const words = topic.split(' ').slice(0, 2).map(w => encodeURIComponent(w)).join('+');
   const musicQueries = [
-    `upbeat+${encodeURIComponent(topic.split(' ').slice(0,2).join('+'))}`,
+    words.length > 3 ? `upbeat+${words}` : '',
     'upbeat+technology+background',
     'corporate+ambient+music',
     'inspiring+background+music',
-  ];
+  ].filter(Boolean);
   for (const q of musicQueries) {
     try {
       const res = await fetch(
@@ -211,7 +212,6 @@ async function searchBackgroundMusic(topic) {
       if (!res.ok) continue;
       const data = await res.json();
       const hits = data?.hits || [];
-      // prefer videos 10-30s long
       const hit = hits.find(h => h.duration >= 10 && h.duration <= 40) || hits[0];
       if (!hit) continue;
       const vf = hit.videos?.medium || hit.videos?.small;
@@ -219,29 +219,37 @@ async function searchBackgroundMusic(topic) {
       const vr = await fetch(vf.url, { signal: AbortSignal.timeout(20000) });
       if (!vr.ok) continue;
       const rawBuf = Buffer.from(await vr.arrayBuffer());
-      // extract audio from the downloaded video
       const musicVideoPath = `${TMP}/music_${Date.now()}.mp4`;
       const musicAudioPath = `${TMP}/music_${Date.now()}.mp3`;
       try {
         fs.writeFileSync(musicVideoPath, rawBuf);
-        await execAsync(
-          `ffprobe -v error -show_entries stream=codec_type -of default=noprint_wrappers=1:nokey=1 ${musicVideoPath}`,
-          { timeout: 5000 }
-        );
         try {
           await execAsync(
             `ffmpeg -i ${musicVideoPath} -vn -c:a libmp3lame -q:a 8 ${musicAudioPath}`,
             { timeout: 15000 }
           );
         } catch {
-          // audio extraction failed, try with acodec copy
           await execAsync(
             `ffmpeg -i ${musicVideoPath} -vn -c:a copy ${musicAudioPath}`,
             { timeout: 15000 }
           );
         }
+        const audioStat = fs.statSync(musicAudioPath);
+        if (!audioStat || audioStat.size < 2000) {
+          log('warn', 'Extracted audio too small, skipping', { query: q, size: audioStat?.size });
+          continue;
+        }
+        const durOut = await execAsync(
+          `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${musicAudioPath}`,
+          { timeout: 5000 }
+        );
+        const audioDur = parseFloat(durOut.trim()) || 0;
+        if (audioDur < 2) {
+          log('warn', 'Extracted audio too short, skipping', { query: q, duration: audioDur });
+          continue;
+        }
         const audioBuf = fs.readFileSync(musicAudioPath);
-        log('info', 'Background music fetched', { query: q, duration: hit.duration, tags: hit.tags });
+        log('info', 'Background music fetched', { query: q, duration: hit.duration, audioDuration: audioDur, tags: hit.tags });
         return audioBuf;
       } finally {
         try { fs.unlinkSync(musicVideoPath); } catch {}
@@ -251,6 +259,7 @@ async function searchBackgroundMusic(topic) {
       log('warn', 'Music search query failed', { query: q, error: e.message });
     }
   }
+  log('warn', 'No background music found from any query');
   return null;
 }
 
