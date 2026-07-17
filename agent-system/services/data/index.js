@@ -396,7 +396,26 @@ app.post('/api/scheduler/tick',async(req,res)=>{try{
       }
       let postResult;
       if (!contentToPost) { postResult = { error: 'empty content' }; }
-      else if(item.platform==='facebook'){
+      else if(item.platform==='facebook'&&item.type==='reel'){
+        const fetch=(await import('node-fetch')).default;
+        const topic=item.topic||'AI technology';
+        const fallbackCaption=`Reel about ${topic}! What do you think? Drop a comment below! #Tech #Innovation #AI`;
+        let caption=fallbackCaption;
+        if(contentToPost&&contentToPost.length>5)caption=contentToPost;
+        const pr=await fetch(`https://api.pexels.com/videos/search?query=${encodeURIComponent(topic)}&per_page=3&orientation=portrait&size=small`,{headers:{Authorization:config.pexels.key}});
+        const pd=await pr.json();const v=pd?.videos?pd.videos.find(v=>v.video_files?.some(f=>f.quality==='hd'&&f.width<=1080))||pd.videos?.[0]:null;
+        if(!v){postResult={error:'No stock video found'};}else{
+        const vf=v.video_files.find(f=>f.quality==='hd'&&f.width<=1080)||v.video_files[0];
+        const vr=await fetch(vf.link);const vb=Buffer.from(await vr.arrayBuffer());
+        const fn=`reels/${Date.now()}.mp4`;await db.supabase.storage.from('media').upload(fn,vb,{contentType:'video/mp4',upsert:false});
+        const{data:{publicUrl:vu}}=db.supabase.storage.from('media').getPublicUrl(fn);
+        const https=require('https');const qs=require('querystring');
+        const body=qs.stringify({access_token:config.facebook.accessToken||'',file_url:vu,description:caption});
+        postResult=await new Promise((resolve)=>{
+          const r=https.request('https://graph.facebook.com/v21.0/me/videos',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded','Content-Length':Buffer.byteLength(body)}},resp=>{let d='';resp.on('data',c=>d+=c);resp.on('end',()=>{try{resolve(JSON.parse(d))}catch(e){resolve({parseError:e.message})}});});
+          r.on('error',e=>resolve({netError:e.message}));r.setTimeout(30000,()=>{r.destroy();resolve({timeout:true})});r.write(body);r.end();
+        });}
+      }else if(item.platform==='facebook'){
         const https=require('https');const qs=require('querystring');
         const body=qs.stringify({access_token:config.facebook.accessToken||'',message:contentToPost});
         postResult=await new Promise((resolve)=>{
@@ -449,7 +468,11 @@ async function autoPilotCycle(){
         const wr=await fetch(`https://s.jina.ai/${encodeURIComponent(topic)}`,{headers:{Authorization:`Bearer ${config.jina.key}`}});
         const wt=await wr.text();
         const sources=[...articles.map(a=>`- ${a.title}: ${a.description||''}`),`- Web: ${wt.substring(0,800)}`].join('\n');
-        content=await azure.generateContent(`Write a genuine, evidence-based Facebook post about: ${topic}\n\nUse these real sources:\n${sources}\n\n200-400 words. 3-5 hashtags. CTA at end. Real examples only, no generic fluff.`,{systemPrompt:'Tech writer. Evidence-based.',maxTokens:1200});
+        if(day.type==='reel'){
+          content=await azure.generateContent(`Write a 15-second reel script about: ${topic}\n\nUse these real sources:\n${sources}\n\nScript format: 3-4 short visual scenes with voiceover cues. Under 250 characters total. 3-5 hashtags.`,{systemPrompt:'Short-form video scriptwriter. Tight, visual, engaging.',maxTokens:500});
+        }else{
+          content=await azure.generateContent(`Write a genuine, evidence-based Facebook post about: ${topic}\n\nUse these real sources:\n${sources}\n\n200-400 words. 3-5 hashtags. CTA at end. Real examples only, no generic fluff.`,{systemPrompt:'Tech writer. Evidence-based.',maxTokens:1200});
+        }
       }catch(e){console.error('[autopilot] research failed:',e.message);content='';}
       const hour=8+Math.floor(Math.random()*12);
       const sched=new Date();sched.setHours(hour,0,0,0);
