@@ -353,7 +353,7 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, segme
           secondInput = '[clip2s]';
         }
       } catch {}
-      vFilter = `${scaleLine}[0:v]trim=0:4.5,setpts=PTS-STARTPTS[v0];${secondInput}trim=0:15,setpts=PTS-STARTPTS[clip2];[v0][clip2]xfade=offset=4.5:duration=0.5:transition=fade,setpts=PTS-STARTPTS[video]`;
+      vFilter = `${scaleLine}[0:v]trim=0:4.5,setpts=PTS-STARTPTS,settb=AVTB[v0];${secondInput}trim=0:15,setpts=PTS-STARTPTS,settb=AVTB[clip2];[v0][clip2]xfade=offset=4.5:duration=0.5:transition=fade,setpts=PTS-STARTPTS,settb=AVTB[video]`;
     } else {
       vFilter = `[0:v]trim=0:30,setpts=PTS-STARTPTS[video]`;
     }
