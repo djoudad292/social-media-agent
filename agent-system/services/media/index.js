@@ -25,7 +25,7 @@ app.post('/media/reel',async(req,res)=>{try{
   await db.supabase.storage.from('media').upload(fn,vb,{contentType:'video/mp4',upsert:false});
   const{data:{publicUrl:pdata}}=db.supabase.storage.from('media').getPublicUrl(fn);
   [out,ttsPath,musicPath,...clips].forEach(f=>{try{fs.unlinkSync(f)}catch{}});
-  res.json({video_url:pdata.publicUrl,duration:15});
+  res.json({video_url:pdata,duration:15});
 }catch(e){res.status(500).json({error:e.message})}});
 app.post('/media/tts',async(req,res)=>{try{
   const{text,voice}=req.body;if(!text)return res.status(400).json({error:'Text required'});
@@ -35,7 +35,7 @@ app.post('/media/tts',async(req,res)=>{try{
   const db=require(path.join(__dirname,'..','..','shared','db'));const fn=`tts/${Date.now()}.mp3`;
   const b=Buffer.from(await r.arrayBuffer());await db.supabase.storage.from('media').upload(fn,b,{contentType:'audio/mpeg',upsert:false});
   const{data:{publicUrl:pdata}}=db.supabase.storage.from('media').getPublicUrl(fn);
-  res.json({audio_url:pdata.publicUrl,voice:vn});
+  res.json({audio_url:pdata,voice:vn});
 }catch(e){res.status(500).json({error:e.message})}});
 async function start(){await redis.connect().catch(()=>{});setInterval(()=>redis.heartbeat('media'),60000);app.listen(PORT,'0.0.0.0',()=>console.log(`Media service on ${PORT}`));}
 start();
