@@ -323,12 +323,12 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, hookT
     let vFilter = '';
     if (hasMultipleClips) {
       if (hasHook) {
-        vFilter = `[0:v]drawtext=text='${safeHook}':enable='between(t,0,3)':fontsize=26:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=8:x=(w-text_w)/2:y=h*0.15[v0];[v0][1:v]xfade=offset=4.5:duration=0.5:transition=fade[video]`;
+        vFilter = `[0:v]drawtext=text='${safeHook}':enable='between(t,0,3)':fontfile=/usr/share/fonts/dejavu/DejaVuSans.ttf:fontsize=26:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=8:x=(w-text_w)/2:y=h*0.15[v0];[v0][1:v]xfade=offset=4.5:duration=0.5:transition=fade[video]`;
       } else {
         vFilter = `[0:v]trim=0:4.5,setpts=PTS-STARTPTS[v0];[1:v]trim=0:15,setpts=PTS-STARTPTS[v1];[v0][v1]xfade=offset=4.5:duration=0.5:transition=fade,setpts=PTS-STARTPTS[video]`;
       }
     } else {
-      vFilter = `[0:v]drawtext=text='${safeHook}':enable='between(t,0,3)':fontsize=26:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=8:x=(w-text_w)/2:y=h*0.15[video]`;
+      vFilter = `[0:v]drawtext=text='${safeHook}':enable='between(t,0,3)':fontfile=/usr/share/fonts/dejavu/DejaVuSans.ttf:fontsize=26:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=8:x=(w-text_w)/2:y=h*0.15[video]`;
     }
 
     if (hasMusic) {
@@ -1466,7 +1466,7 @@ app.post('/api/reel/post', async (req, res) => {
       if (fbRes.id) {
         try { await db.savePost({ content, topic, type: 'reel', status: 'posted', facebook_post_id: fbRes.id }); }
         catch (e) { log('error', 'Reel savePost failed', { error: e.message, rid: req.id }); }
-        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: false, error: e.message });
+        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: false });
       } else {
         res.json({ error: 'Facebook video error', raw: fbRes, video_url: vu });
       }

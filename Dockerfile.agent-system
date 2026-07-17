@@ -59,7 +59,7 @@ CMD ["node","services/media/index.js"]
 
 # ─── Data (Account 4) ───
 FROM base AS data
-RUN apk add --no-cache ffmpeg
+RUN apk add --no-cache ffmpeg font-dejavu
 WORKDIR /app
 COPY --from=deps /app/node_modules /app/node_modules
 COPY agent-system/package.json /app/
