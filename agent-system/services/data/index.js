@@ -1395,13 +1395,24 @@ app.post('/api/scheduler/tick', async (req, res) => {
             results.push({ id: item.id, status: 'already_posted' });
           }
         } else {
-          await db.removeFromQueue(item.id);
-          results.push({ id: item.id, status: 'failed', error: postResult });
-          log('error', 'Post failed', { id: item.id, error: postResult, rid });
+          const retryRes = await db.rescheduleItem(item.id, 900000);
+          if (retryRes === -1) {
+            results.push({ id: item.id, status: 'dropped', error: postResult });
+            log('error', 'Post failed, retries exhausted', { id: item.id, error: postResult, rid });
+          } else if (retryRes > 0) {
+            results.push({ id: item.id, status: 'retry', retry: retryRes, error: postResult });
+            log('warn', 'Post failed, will retry', { id: item.id, retry: retryRes, error: postResult, rid });
+          }
         }
       } catch (e) {
-        log('error', 'Tick item error', { id: item.id, error: e.message, rid });
-        results.push({ id: item.id, status: 'error', error: e.message });
+        const retryRes = await db.rescheduleItem(item.id, 900000);
+        if (retryRes === -1) {
+          results.push({ id: item.id, status: 'dropped', error: e.message });
+          log('error', 'Tick item error, retries exhausted', { id: item.id, error: e.message, rid });
+        } else if (retryRes > 0) {
+          results.push({ id: item.id, status: 'retry', retry: retryRes });
+          log('warn', 'Tick item error, will retry', { id: item.id, retry: retryRes, error: e.message, rid });
+        }
       }
     }
     res.json({ processed: results.length, results });

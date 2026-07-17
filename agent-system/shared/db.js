@@ -244,8 +244,46 @@ async function removeFromQueue(id) {
   try {
     const result = await r.eval(script, 0, String(id));
     return result === 1;
-  } catch {
+  } catch (e) {
+    console.error('[db] removeFromQueue lua error:', e.message);
     return false;
+  }
+}
+
+const MAX_RETRIES = 5;
+
+async function rescheduleItem(id, delayMs) {
+  const r = redis.getRedis();
+  const script = `
+    local items = redis.call("lrange", "queue:items", 0, -1)
+    for i, raw in ipairs(items) do
+      local item = cjson.decode(raw)
+      if item.id == tonumber(ARGV[1]) and item.status == "scheduled" then
+        item.retryCount = (item.retryCount or 0) + 1
+        if item.retryCount > tonumber(ARGV[2]) then
+          redis.call("lrem", "queue:items", 0, raw)
+          return -1
+        end
+        local sched = ARGV[3]
+        if sched then
+          item.scheduled_for = sched
+        end
+        redis.call("lset", "queue:items", i - 1, cjson.encode(item))
+        return item.retryCount
+      end
+    end
+    return 0
+  `;
+  try {
+    const future = new Date(Date.now() + delayMs).toISOString();
+    const result = await r.eval(script, 0, String(id), String(MAX_RETRIES), future);
+    if (result === -1) {
+      console.warn('[db] rescheduleItem exhausted retries, removed:', id);
+    }
+    return result;
+  } catch (e) {
+    console.error('[db] rescheduleItem lua error:', e.message);
+    return -1;
   }
 }
 
@@ -297,6 +335,6 @@ module.exports = {
   saveLead,
   saveStrategy, getStrategy,
   addToQueue, getQueue, getDueItems,
-  markPosted, removeFromQueue, queueStats,
+  markPosted, removeFromQueue, rescheduleItem, queueStats,
   initDatabase,
 };
