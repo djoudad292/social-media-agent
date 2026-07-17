@@ -190,77 +190,93 @@ async function generateSRT(segments, totalDuration) {
   function pad(n, w = 2) { return String(n).padStart(w, '0'); }
 }
 
+async function generateAmbientTrack() {
+  const outPath = `${TMP}/ambient_${Date.now()}.mp3`;
+  await execAsync(
+    `ffmpeg -y -f lavfi -i sine=frequency=220:duration=30 ` +
+    `-f lavfi -i sine=frequency=275:duration=30 ` +
+    `-f lavfi -i sine=frequency=330:duration=30 ` +
+    `-filter_complex ` +
+    `"[0:a]volume=0.03[a];[1:a]volume=0.02[b];[2:a]volume=0.015[c];` +
+    `[a][b][c]amix=inputs=3:duration=first[out]" ` +
+    `-map "[out]" -ac 1 ${outPath}`,
+    { timeout: 15000 }
+  );
+  const buf = fs.readFileSync(outPath);
+  try { fs.unlinkSync(outPath); } catch {}
+  log('info', 'Generated ambient background track', { size: buf.length });
+  return buf;
+}
+
 async function searchBackgroundMusic(topic) {
   const fetch = globalThis.fetch || (await import('node-fetch')).default;
-  if (!config.pixabay.key) {
-    log('warn', 'No Pixabay key, skipping background music');
-    return null;
-  }
-  const words = topic.split(' ').slice(0, 2).map(w => encodeURIComponent(w)).join('+');
-  const musicQueries = [
-    words.length > 3 ? `upbeat+${words}` : '',
-    'upbeat+technology+background',
-    'corporate+ambient+music',
-    'inspiring+background+music',
-  ].filter(Boolean);
-  for (const q of musicQueries) {
-    try {
-      const res = await fetch(
-        `https://pixabay.com/api/videos/?key=${config.pixabay.key}&q=${q}&video_type=film&per_page=5`,
-        { signal: AbortSignal.timeout(10000) }
-      );
-      if (!res.ok) continue;
-      const data = await res.json();
-      const hits = data?.hits || [];
-      const hit = hits.find(h => h.duration >= 10 && h.duration <= 40) || hits[0];
-      if (!hit) continue;
-      const vf = hit.videos?.medium || hit.videos?.small;
-      if (!vf?.url) continue;
-      const vr = await fetch(vf.url, { signal: AbortSignal.timeout(20000) });
-      if (!vr.ok) continue;
-      const rawBuf = Buffer.from(await vr.arrayBuffer());
-      const musicVideoPath = `${TMP}/music_${Date.now()}.mp4`;
-      const musicAudioPath = `${TMP}/music_${Date.now()}.mp3`;
+  if (config.pixabay.key) {
+    const words = topic.split(' ').slice(0, 2).map(w => encodeURIComponent(w)).join('+');
+    const musicQueries = [
+      words.length > 3 ? `upbeat+${words}` : '',
+      'upbeat+technology+background',
+      'corporate+ambient+music',
+      'inspiring+background+music',
+    ].filter(Boolean);
+    for (const q of musicQueries) {
       try {
-        fs.writeFileSync(musicVideoPath, rawBuf);
-        try {
-          await execAsync(
-            `ffmpeg -i ${musicVideoPath} -vn -c:a libmp3lame -q:a 8 ${musicAudioPath}`,
-            { timeout: 15000 }
-          );
-        } catch {
-          await execAsync(
-            `ffmpeg -i ${musicVideoPath} -vn -c:a copy ${musicAudioPath}`,
-            { timeout: 15000 }
-          );
-        }
-        const audioStat = fs.statSync(musicAudioPath);
-        if (!audioStat || audioStat.size < 2000) {
-          log('warn', 'Extracted audio too small, skipping', { query: q, size: audioStat?.size });
-          continue;
-        }
-        const durOut = await execAsync(
-          `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${musicAudioPath}`,
-          { timeout: 5000 }
+        const res = await fetch(
+          `https://pixabay.com/api/videos/?key=${config.pixabay.key}&q=${q}&video_type=film&per_page=5`,
+          { signal: AbortSignal.timeout(10000) }
         );
-        const audioDur = parseFloat(durOut.trim()) || 0;
-        if (audioDur < 2) {
-          log('warn', 'Extracted audio too short, skipping', { query: q, duration: audioDur });
-          continue;
+        if (!res.ok) continue;
+        const data = await res.json();
+        const hits = data?.hits || [];
+        const hit = hits.find(h => h.duration >= 10 && h.duration <= 40) || hits[0];
+        if (!hit) continue;
+        const vf = hit.videos?.medium || hit.videos?.small;
+        if (!vf?.url) continue;
+        const vr = await fetch(vf.url, { signal: AbortSignal.timeout(20000) });
+        if (!vr.ok) continue;
+        const rawBuf = Buffer.from(await vr.arrayBuffer());
+        const musicVideoPath = `${TMP}/music_${Date.now()}.mp4`;
+        const musicAudioPath = `${TMP}/music_${Date.now()}.mp3`;
+        try {
+          fs.writeFileSync(musicVideoPath, rawBuf);
+          try {
+            await execAsync(
+              `ffmpeg -i ${musicVideoPath} -vn -c:a libmp3lame -q:a 8 ${musicAudioPath}`,
+              { timeout: 15000 }
+            );
+          } catch {
+            await execAsync(
+              `ffmpeg -i ${musicVideoPath} -vn -c:a copy ${musicAudioPath}`,
+              { timeout: 15000 }
+            );
+          }
+          const audioStat = fs.statSync(musicAudioPath);
+          if (!audioStat || audioStat.size < 2000) {
+            log('warn', 'Extracted audio too small, skipping', { query: q, size: audioStat?.size });
+            continue;
+          }
+          const durOut = await execAsync(
+            `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${musicAudioPath}`,
+            { timeout: 5000 }
+          );
+          const audioDur = parseFloat(durOut.trim()) || 0;
+          if (audioDur < 2) {
+            log('warn', 'Extracted audio too short, skipping', { query: q, duration: audioDur });
+            continue;
+          }
+          const audioBuf = fs.readFileSync(musicAudioPath);
+          log('info', 'Background music fetched', { query: q, duration: hit.duration, audioDuration: audioDur, tags: hit.tags });
+          return audioBuf;
+        } finally {
+          try { fs.unlinkSync(musicVideoPath); } catch {}
+          try { fs.unlinkSync(musicAudioPath); } catch {}
         }
-        const audioBuf = fs.readFileSync(musicAudioPath);
-        log('info', 'Background music fetched', { query: q, duration: hit.duration, audioDuration: audioDur, tags: hit.tags });
-        return audioBuf;
-      } finally {
-        try { fs.unlinkSync(musicVideoPath); } catch {}
-        try { fs.unlinkSync(musicAudioPath); } catch {}
+      } catch (e) {
+        log('warn', 'Music search query failed', { query: q, error: e.message });
       }
-    } catch (e) {
-      log('warn', 'Music search query failed', { query: q, error: e.message });
     }
   }
-  log('warn', 'No background music found from any query');
-  return null;
+  log('info', 'Falling back to generated ambient track');
+  return generateAmbientTrack();
 }
 
 function findHookText(script) {

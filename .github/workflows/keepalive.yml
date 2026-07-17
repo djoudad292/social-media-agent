@@ -9,3 +9,19 @@ jobs:
     steps:
       - name: Trigger tick (keepalive + process queue)
         run: curl -s -X POST --max-time 120 -H "x-agent-token: 960a514e1704ec940b93d7823c08a60360fb11c784bea75a" "https://agent-data-1qw0.onrender.com/api/scheduler/tick"
+
+      - name: Log queue status
+        run: |
+          QUEUE=$(curl -s --max-time 10 -H "x-agent-token: 960a514e1704ec940b93d7823c08a60360fb11c784bea75a" "https://agent-data-1qw0.onrender.com/api/scheduler/queue?status=scheduled&limit=10")
+          echo "SCHEDULED: $(echo $QUEUE | python3 -c 'import json,sys; d=json.load(sys.stdin); print(len(d.get(\"items\",[])))' 2>/dev/null || echo '?')"
+          POSTED=$(curl -s --max-time 10 -H "x-agent-token: 960a514e1704ec940b93d7823c08a60360fb11c784bea75a" "https://agent-data-1qw0.onrender.com/api/scheduler/queue?status=posted&limit=3")
+          echo "LATEST POSTS:"
+          echo "$POSTED" | python3 -c '
+import json,sys
+d=json.load(sys.stdin)
+for i in d.get("items",[])[:3]:
+  t=i.get("type","?")
+  rid=i.get("result",{}).get("id","")[:25]
+  at=i.get("posted_at","")[:16]
+  print(f"  [{t}] {at} {rid}")
+' 2>/dev/null || echo "  (unavailable)"
