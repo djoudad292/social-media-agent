@@ -71,7 +71,7 @@ const fbRateLimit = {
   }
 };
 
-// ── TTS + Audio merge helpers ────────────────────────────
+// ── TTS + Reel composition helpers ────────────────────────
 
 function execAsync(cmd, opts = {}) {
   return new Promise((resolve, reject) => {
@@ -84,13 +84,51 @@ function execAsync(cmd, opts = {}) {
   });
 }
 
-async function generateTTS(text) {
+async function generateReelScript(topic, caption) {
+  const prompt =
+    `You are a voiceover scriptwriter for a short tech reel. ` +
+    `Write a SHORT conversational speech (max 4 short sentences) about: ${topic}. ` +
+    `Rules:\n` +
+    `- Engaging, energetic, like a TikTok voiceover\n` +
+    `- Each sentence ends with "..." to add a dramatic pause\n` +
+    `- Maximum 80 words total\n` +
+    `- Ask a question or give a surprising fact to hook viewers\n` +
+    `- Do NOT use hashtags\n` +
+    `- Do NOT repeat this caption word-for-word: "${caption}"\n` +
+    `- Speak directly to the viewer (use "you")\n` +
+    `\n` +
+    `Example format:\n` +
+    `Did you know AI can now run entirely on your phone? ... ` +
+    `No cloud, no internet, just pure on-device power. ... ` +
+    `Sounds futuristic? ... It is already here.`;
+  let script = caption.length > 10 ? `${caption.slice(0, 60)}... like and follow!` : `Check this out... ${topic}... mind blown.`;
+  try {
+    const gen = await azure.generateContent(prompt, { maxTokens: 500 });
+    if (gen && gen.length > 10) script = gen;
+  } catch (e) {
+    log('warn', 'Script gen failed, using default', { error: e.message });
+  }
+  return script;
+}
+
+function scriptToSegments(script) {
+  return script.split(/\.\.\./g).map(s => s.trim()).filter(Boolean);
+}
+
+async function generateTTSWithPauses(script) {
   const fetch = globalThis.fetch || (await import('node-fetch')).default;
   if (!config.speech.key) throw new Error('AZURE_SPEECH_KEY not configured');
-  const esc = text
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
-  const ssml = `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'><voice name='en-US-JennyNeural'>${esc}</voice></speak>`;
+  const segments = scriptToSegments(script);
+  if (segments.length === 0) throw new Error('No speech segments');
+  let ssmlBody = '';
+  for (let i = 0; i < segments.length; i++) {
+    const esc = segments[i]
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+    ssmlBody += `<prosody rate='+5%'>${esc}</prosody>`;
+    if (i < segments.length - 1) ssmlBody += `<break time='600ms'/>`;
+  }
+  const ssml = `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'><voice name='en-US-JennyNeural'>${ssmlBody}</voice></speak>`;
   const res = await fetch(
     `https://${config.speech.region}.tts.speech.microsoft.com/cognitiveservices/v1`,
     {
@@ -105,27 +143,82 @@ async function generateTTS(text) {
     }
   );
   if (!res.ok) throw new Error(`TTS API returned ${res.status}`);
-  return Buffer.from(await res.arrayBuffer());
+  const audioBuffer = Buffer.from(await res.arrayBuffer());
+  return { audioBuffer, segments };
 }
 
-async function addAudioToVideo(videoBuffer, audioBuffer) {
+async function getAudioDuration(audioPath) {
+  const out = await execAsync(
+    `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${audioPath}`,
+    { timeout: 10000 }
+  );
+  return parseFloat(out.trim()) || 0;
+}
+
+async function generateSRT(segments, totalDuration) {
+  if (segments.length === 0 || totalDuration <= 0) return '';
+  const totalChars = segments.reduce((s, seg) => s + seg.length, 0);
+  const minSegmentDuration = 1.5;
+  const maxSegmentDuration = 8;
+  let entries = [];
+  let currentTime = 0;
+  for (let i = 0; i < segments.length; i++) {
+    const ratio = totalChars > 0 ? segments[i].length / totalChars : 1 / segments.length;
+    let segDuration = Math.min(maxSegmentDuration, Math.max(minSegmentDuration, totalDuration * ratio));
+    if (i === segments.length - 1) segDuration = Math.max(segDuration, totalDuration - currentTime);
+    const start = currentTime;
+    const end = Math.min(currentTime + segDuration, totalDuration);
+    if (end > start) {
+      entries.push({ index: i + 1, start, end, text: segments[i] });
+    }
+    currentTime = end;
+  }
+  return entries.map(e => {
+    const s = fmtTime(e.start);
+    const en = fmtTime(e.end);
+    const t = e.text.length > 70 ? e.text.slice(0, 67) + '...' : e.text;
+    return `${e.index}\n${s} --> ${en}\n${t}\n`;
+  }).join('\n');
+
+  function fmtTime(sec) {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    const ms = Math.floor((s - Math.floor(s)) * 1000);
+    return `${pad(h)}:${pad(m)}:${pad(Math.floor(s))},${pad(ms, 3)}`;
+  }
+  function pad(n, w = 2) { return String(n).padStart(w, '0'); }
+}
+
+async function composeReelFull(videoBuffer, audioBuffer, srtContent) {
   const videoPath = `${TMP}/reel_${Date.now()}.mp4`;
   const audioPath = `${TMP}/reel_${Date.now()}.mp3`;
+  const srtPath = `${TMP}/reel_${Date.now()}.srt`;
   const outputPath = `${TMP}/reel_${Date.now()}_out.mp4`;
   try {
     fs.writeFileSync(videoPath, videoBuffer);
     fs.writeFileSync(audioPath, audioBuffer);
-    // -c:v copy = zero video re-encode (no OOM risk)
+    fs.writeFileSync(srtPath, srtContent);
+    await execAsync(
+      `ffmpeg -i ${videoPath} -i ${audioPath} ` +
+      `-vf "subtitles=${srtPath}:force_style='FontSize=13,FontName=Arial,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BorderStyle=1,Outline=1,MarginV=55'" ` +
+      `-c:v libx264 -preset ultrafast -crf 28 -c:a aac -map 0:v:0 -map 1:a:0 -shortest -movflags +faststart -y ${outputPath}`,
+      { timeout: 120000 }
+    );
+    const result = fs.readFileSync(outputPath);
+    return result;
+  } catch (e) {
+    log('warn', 'Subtitle burn failed, falling back to audio-only', { error: e.message });
     await execAsync(
       `ffmpeg -i ${videoPath} -i ${audioPath} -c:v copy -c:a aac ` +
       `-map 0:v:0 -map 1:a:0 -shortest -movflags +faststart -y ${outputPath}`,
       { timeout: 60000 }
     );
-    const result = fs.readFileSync(outputPath);
-    return result;
+    return fs.readFileSync(outputPath);
   } finally {
     try { fs.unlinkSync(videoPath); } catch {}
     try { fs.unlinkSync(audioPath); } catch {}
+    try { fs.unlinkSync(srtPath); } catch {}
     try { fs.unlinkSync(outputPath); } catch {}
   }
 }
@@ -1092,7 +1185,6 @@ app.post('/api/scheduler/tick', async (req, res) => {
           const fetch = globalThis.fetch || (await import('node-fetch')).default;
           const topic = item.topic || 'AI technology';
           const caption = contentToPost.length > 5 ? contentToPost : `Reel about ${topic}! #Tech #AI`;
-          const scriptForTTS = caption.length > 10 ? caption.slice(0, 500) : `Reel about ${topic}. Like and follow for more!`;
           const pr = await fetch(
             `https://api.pexels.com/videos/search?query=${encodeURIComponent(topic)}&per_page=3&orientation=portrait&size=small`,
             { headers: { Authorization: config.pexels.key }, signal: AbortSignal.timeout(15000) }
@@ -1112,14 +1204,20 @@ app.post('/api/scheduler/tick', async (req, res) => {
               postResult = { error: 'Video too large (>100MB)' };
             } else {
               try {
-                const ttsAudio = await generateTTS(scriptForTTS);
-                const finalVideo = await addAudioToVideo(vb, ttsAudio);
+                const speechScript = await generateReelScript(topic, caption);
+                const { audioBuffer, segments } = await generateTTSWithPauses(speechScript);
+                const audioPath = `${TMP}/dur_${Date.now()}.mp3`;
+                fs.writeFileSync(audioPath, audioBuffer);
+                const duration = await getAudioDuration(audioPath);
+                fs.unlinkSync(audioPath);
+                const srtContent = await generateSRT(segments, duration);
+                const finalVideo = await composeReelFull(vb, audioBuffer, srtContent);
                 const fn = `reels/${Date.now()}.mp4`;
                 const vu = await db.uploadToSupabase('media', fn, finalVideo, 'video/mp4');
                 if (!vu) throw new Error('Upload returned empty URL');
                 postResult = await fbVideoPost(vu, caption);
               } catch (e) {
-                log('error', 'TTS merge failed, falling back to silent', { error: e.message, rid });
+                log('error', 'TTS reel failed, falling back to silent', { error: e.message, rid });
                 const fn = `reels/${Date.now()}.mp4`;
                 const vu = await db.uploadToSupabase('media', fn, vb, 'video/mp4');
                 if (!vu) throw new Error('Upload returned empty URL');
@@ -1177,7 +1275,6 @@ app.post('/api/reel/post', async (req, res) => {
     } catch (e) {
       log('error', 'Reel caption gen failed', { error: e.message, rid: req.id });
     }
-    const scriptForTTS = content.length > 10 ? content.slice(0, 500) : `Reel about ${topic}. Like and follow for more!`;
     const pr = await fetch(
       `https://api.pexels.com/videos/search?query=${encodeURIComponent(topic)}&per_page=3&orientation=portrait&size=small`,
       { headers: { Authorization: config.pexels.key }, signal: AbortSignal.timeout(15000) }
@@ -1198,8 +1295,14 @@ app.post('/api/reel/post', async (req, res) => {
       return res.status(400).json({ error: 'Video too large (>100MB)' });
     }
     try {
-      const ttsAudio = await generateTTS(scriptForTTS);
-      const finalVideo = await addAudioToVideo(vb, ttsAudio);
+      const speechScript = await generateReelScript(topic, content);
+      const { audioBuffer, segments } = await generateTTSWithPauses(speechScript);
+      const audioPath = `${TMP}/dur_${Date.now()}.mp3`;
+      fs.writeFileSync(audioPath, audioBuffer);
+      const duration = await getAudioDuration(audioPath);
+      fs.unlinkSync(audioPath);
+      const srtContent = await generateSRT(segments, duration);
+      const finalVideo = await composeReelFull(vb, audioBuffer, srtContent);
       const fn = `reels/${Date.now()}.mp4`;
       const vu = await db.uploadToSupabase('media', fn, finalVideo, 'video/mp4');
       if (!vu) throw new Error('Upload returned empty URL');
@@ -1207,7 +1310,7 @@ app.post('/api/reel/post', async (req, res) => {
       if (fbRes.id) {
         try { await db.savePost({ content, topic, type: 'reel', status: 'posted', facebook_post_id: fbRes.id }); }
         catch (e) { log('error', 'Reel savePost failed', { error: e.message, rid: req.id }); }
-        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: true });
+        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_subtitles: true, has_voiceover: true });
       } else {
         res.json({ error: 'Facebook video error', raw: fbRes, video_url: vu });
       }
@@ -1220,7 +1323,7 @@ app.post('/api/reel/post', async (req, res) => {
       if (fbRes.id) {
         try { await db.savePost({ content, topic, type: 'reel', status: 'posted', facebook_post_id: fbRes.id }); }
         catch (e) { log('error', 'Reel savePost failed', { error: e.message, rid: req.id }); }
-        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: false });
+        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: false, has_subtitles: false });
       } else {
         res.json({ error: 'Facebook video error', raw: fbRes, video_url: vu });
       }
