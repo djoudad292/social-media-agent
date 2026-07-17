@@ -1,9 +1,14 @@
 const express = require('express');
 const path = require('path');
 const https = require('https');
+const fs = require('fs');
+const { exec } = require('child_process');
 const crypto = require('crypto');
 const { URLSearchParams } = require('url');
 const app = express();
+
+const TMP = '/tmp/agent-data';
+if (!fs.existsSync(TMP)) fs.mkdirSync(TMP, { recursive: true });
 
 app.use(express.json({ limit: '10mb' }));
 
@@ -65,6 +70,65 @@ const fbRateLimit = {
     return true;
   }
 };
+
+// ── TTS + Audio merge helpers ────────────────────────────
+
+function execAsync(cmd, opts = {}) {
+  return new Promise((resolve, reject) => {
+    exec(cmd, { timeout: opts.timeout || 30000, maxBuffer: 50 * 1024 * 1024, ...opts },
+      (err, stdout, stderr) => {
+        if (err) reject(new Error(err.message));
+        else resolve(stdout || stderr || '');
+      }
+    );
+  });
+}
+
+async function generateTTS(text) {
+  const fetch = globalThis.fetch || (await import('node-fetch')).default;
+  if (!config.speech.key) throw new Error('AZURE_SPEECH_KEY not configured');
+  const esc = text
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
+  const ssml = `<speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US'><voice name='en-US-JennyNeural'>${esc}</voice></speak>`;
+  const res = await fetch(
+    `https://${config.speech.region}.tts.speech.microsoft.com/cognitiveservices/v1`,
+    {
+      method: 'POST',
+      headers: {
+        'Ocp-Apim-Subscription-Key': config.speech.key,
+        'Content-Type': 'application/ssml+xml',
+        'X-Microsoft-OutputFormat': 'audio-16khz-128kbitrate-mono-mp3',
+      },
+      body: ssml,
+      signal: AbortSignal.timeout(30000),
+    }
+  );
+  if (!res.ok) throw new Error(`TTS API returned ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
+}
+
+async function addAudioToVideo(videoBuffer, audioBuffer) {
+  const videoPath = `${TMP}/reel_${Date.now()}.mp4`;
+  const audioPath = `${TMP}/reel_${Date.now()}.mp3`;
+  const outputPath = `${TMP}/reel_${Date.now()}_out.mp4`;
+  try {
+    fs.writeFileSync(videoPath, videoBuffer);
+    fs.writeFileSync(audioPath, audioBuffer);
+    // -c:v copy = zero video re-encode (no OOM risk)
+    await execAsync(
+      `ffmpeg -i ${videoPath} -i ${audioPath} -c:v copy -c:a aac ` +
+      `-map 0:v:0 -map 1:a:0 -shortest -movflags +faststart -y ${outputPath}`,
+      { timeout: 60000 }
+    );
+    const result = fs.readFileSync(outputPath);
+    return result;
+  } finally {
+    try { fs.unlinkSync(videoPath); } catch {}
+    try { fs.unlinkSync(audioPath); } catch {}
+    try { fs.unlinkSync(outputPath); } catch {}
+  }
+}
 
 // ── Facebook API ─────────────────────────────────────────
 
@@ -1028,6 +1092,7 @@ app.post('/api/scheduler/tick', async (req, res) => {
           const fetch = globalThis.fetch || (await import('node-fetch')).default;
           const topic = item.topic || 'AI technology';
           const caption = contentToPost.length > 5 ? contentToPost : `Reel about ${topic}! #Tech #AI`;
+          const scriptForTTS = caption.length > 10 ? caption.slice(0, 500) : `Reel about ${topic}. Like and follow for more!`;
           const pr = await fetch(
             `https://api.pexels.com/videos/search?query=${encodeURIComponent(topic)}&per_page=3&orientation=portrait&size=small`,
             { headers: { Authorization: config.pexels.key }, signal: AbortSignal.timeout(15000) }
@@ -1046,10 +1111,20 @@ app.post('/api/scheduler/tick', async (req, res) => {
             if (vb.length > 100 * 1024 * 1024) {
               postResult = { error: 'Video too large (>100MB)' };
             } else {
-              const fn = `reels/${Date.now()}.mp4`;
-              const vu = await db.uploadToSupabase('media', fn, vb, 'video/mp4');
-              if (!vu) throw new Error('Upload returned empty URL');
-              postResult = await fbVideoPost(vu, caption);
+              try {
+                const ttsAudio = await generateTTS(scriptForTTS);
+                const finalVideo = await addAudioToVideo(vb, ttsAudio);
+                const fn = `reels/${Date.now()}.mp4`;
+                const vu = await db.uploadToSupabase('media', fn, finalVideo, 'video/mp4');
+                if (!vu) throw new Error('Upload returned empty URL');
+                postResult = await fbVideoPost(vu, caption);
+              } catch (e) {
+                log('error', 'TTS merge failed, falling back to silent', { error: e.message, rid });
+                const fn = `reels/${Date.now()}.mp4`;
+                const vu = await db.uploadToSupabase('media', fn, vb, 'video/mp4');
+                if (!vu) throw new Error('Upload returned empty URL');
+                postResult = await fbVideoPost(vu, caption);
+              }
             }
           }
         } else if (item.platform === 'facebook') {
@@ -1102,6 +1177,7 @@ app.post('/api/reel/post', async (req, res) => {
     } catch (e) {
       log('error', 'Reel caption gen failed', { error: e.message, rid: req.id });
     }
+    const scriptForTTS = content.length > 10 ? content.slice(0, 500) : `Reel about ${topic}. Like and follow for more!`;
     const pr = await fetch(
       `https://api.pexels.com/videos/search?query=${encodeURIComponent(topic)}&per_page=3&orientation=portrait&size=small`,
       { headers: { Authorization: config.pexels.key }, signal: AbortSignal.timeout(15000) }
@@ -1121,26 +1197,33 @@ app.post('/api/reel/post', async (req, res) => {
     if (vb.length > 100 * 1024 * 1024) {
       return res.status(400).json({ error: 'Video too large (>100MB)' });
     }
-    const fn = `reels/${Date.now()}.mp4`;
-    const vu = await db.uploadToSupabase('media', fn, vb, 'video/mp4');
-    if (!vu) throw new Error('Upload returned empty URL');
-    const fbRes = await fbVideoPost(vu, content);
-    if (fbRes.id) {
-      try {
-        await db.savePost({
-          content, topic, type: 'reel', status: 'posted',
-          facebook_post_id: fbRes.id,
-        });
-      } catch (e) {
-        log('error', 'Reel savePost failed', { error: e.message, rid: req.id });
+    try {
+      const ttsAudio = await generateTTS(scriptForTTS);
+      const finalVideo = await addAudioToVideo(vb, ttsAudio);
+      const fn = `reels/${Date.now()}.mp4`;
+      const vu = await db.uploadToSupabase('media', fn, finalVideo, 'video/mp4');
+      if (!vu) throw new Error('Upload returned empty URL');
+      const fbRes = await fbVideoPost(vu, content);
+      if (fbRes.id) {
+        try { await db.savePost({ content, topic, type: 'reel', status: 'posted', facebook_post_id: fbRes.id }); }
+        catch (e) { log('error', 'Reel savePost failed', { error: e.message, rid: req.id }); }
+        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: true });
+      } else {
+        res.json({ error: 'Facebook video error', raw: fbRes, video_url: vu });
       }
-      res.json({
-        success: true,
-        reel_url: `https://facebook.com/${fbRes.id}`,
-        caption: content,
-      });
-    } else {
-      res.json({ error: 'Facebook video error', raw: fbRes, video_url: vu });
+    } catch (e) {
+      log('error', 'TTS reel failed, falling back to silent', { error: e.message, rid: req.id });
+      const fn = `reels/${Date.now()}.mp4`;
+      const vu = await db.uploadToSupabase('media', fn, vb, 'video/mp4');
+      if (!vu) throw new Error('Upload returned empty URL');
+      const fbRes = await fbVideoPost(vu, content);
+      if (fbRes.id) {
+        try { await db.savePost({ content, topic, type: 'reel', status: 'posted', facebook_post_id: fbRes.id }); }
+        catch (e) { log('error', 'Reel savePost failed', { error: e.message, rid: req.id }); }
+        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: false });
+      } else {
+        res.json({ error: 'Facebook video error', raw: fbRes, video_url: vu });
+      }
     }
   } catch (e) {
     log('error', 'Reel post failed', { error: e.message, rid: req.id });
