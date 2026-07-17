@@ -306,8 +306,9 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, segme
       if (audioDur > 0) {
         const srt = await generateSRT(segments, audioDur);
         if (srt) {
-          subtitlePath = `${TMP}/subs_${now}.srt`;
-          fs.writeFileSync(subtitlePath, srt);
+          const p = `${TMP}/subs_${now}.srt`;
+          fs.writeFileSync(p, srt);
+          subtitlePath = p;
         }
       }
     } catch (e) {
@@ -357,11 +358,9 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, segme
       vFilter = `[0:v]trim=0:30,setpts=PTS-STARTPTS[video]`;
     }
 
-    if (hasSubtitles && fs.existsSync(subtitlePath)) {
+    if (hasSubtitles) {
       vFilter += `;[video]subtitles=${subtitlePath}:force_style='FontSize=16,FontName=DejaVu Sans,PrimaryColour=&H00FFFFFF,OutlineColour=&H000000,BorderStyle=1,Outline=2,Shadow=0,MarginV=56,Alignment=2'[out]`;
       videoOutput = 'out';
-    } else if (hasSubtitles) {
-      log('warn', 'Subtitle file missing after write');
     }
 
     let aFilter = '';
