@@ -112,9 +112,15 @@ function scriptToSegments(script) {
 
 async function generateTTSWithPauses(script) {
   const fetch = globalThis.fetch || (await import('node-fetch')).default;
-  if (!config.speech.key) throw new Error('AZURE_SPEECH_KEY not configured');
   const segments = scriptToSegments(script);
-  if (segments.length === 0) throw new Error('No speech segments');
+  if (segments.length === 0) {
+    const fallback = [script || 'Check this out.'];
+    return { audioBuffer: null, segments: fallback };
+  }
+  if (!config.speech.key) {
+    log('warn', 'AZURE_SPEECH_KEY not set, skipping voiceover');
+    return { audioBuffer: null, segments };
+  }
   let ssmlBody = '';
   for (let i = 0; i < segments.length; i++) {
     const esc = segments[i]
@@ -137,7 +143,10 @@ async function generateTTSWithPauses(script) {
       signal: AbortSignal.timeout(30000),
     }
   );
-  if (!res.ok) throw new Error(`TTS API returned ${res.status}`);
+  if (!res.ok) {
+    log('warn', 'TTS API failed, skipping voiceover', { status: res.status });
+    return { audioBuffer: null, segments };
+  }
   const audioBuffer = Buffer.from(await res.arrayBuffer());
   return { audioBuffer, segments };
 }
@@ -279,8 +288,9 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, segme
     fs.writeFileSync(p, buf);
     return p;
   });
-  const voicePath = `${TMP}/voice_${now}.mp3`;
-  fs.writeFileSync(voicePath, voiceoverBuffer);
+  const hasVoice = voiceoverBuffer && voiceoverBuffer.length > 100;
+  const voicePath = hasVoice ? `${TMP}/voice_${now}.mp3` : null;
+  if (voicePath) fs.writeFileSync(voicePath, voiceoverBuffer);
   const musicPath = (musicBuffer && musicBuffer.length > 1000)
     ? (() => { const p = `${TMP}/music_${now}.mp3`; fs.writeFileSync(p, musicBuffer); return p; })()
     : null;
@@ -288,7 +298,7 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, segme
   let subtitlePath = null;
   if (Array.isArray(segments) && segments.length > 0) {
     try {
-      const audioDur = await getAudioDuration(voicePath);
+      const audioDur = voicePath ? await getAudioDuration(voicePath) : 3 + segments.join(' ').split(' ').length * 0.3;
       if (audioDur > 0) {
         const srt = generateSRT(segments, audioDur);
         if (srt) {
@@ -301,30 +311,25 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, segme
     }
   }
 
+  const allInputs = [...clipPaths];
+  if (voicePath) allInputs.push(voicePath);
+  if (musicPath) allInputs.push(musicPath);
+  const inputs = allInputs.map((p, i) => `-i ${p}`).join(' ');
+  const clipCount = clipPaths.length;
+  const voiceIdx = voicePath ? clipCount : -1;
+  const musicIdx = musicPath ? (clipCount + (voicePath ? 1 : 0)) : -1;
+
   try {
     const hasMultipleClips = clipPaths.length >= 2;
     const hasMusic = !!musicPath;
+    const hasVoice = voiceIdx >= 0;
     const hasSubtitles = !!subtitlePath;
 
-    if (!hasSubtitles && !hasMultipleClips) {
-      let cmd;
-      if (hasMusic) {
-        cmd =
-          `ffmpeg -i ${clipPaths[0]} -i ${voicePath} -stream_loop -1 -i ${musicPath} ` +
-          `-filter_complex "[1:a]volume=1.0[a1];[2:a]volume=0.12[a2];[a1][a2]amix=inputs=2:duration=first[audio]" ` +
-          `-c:v copy -map 0:v -map "[audio]" -shortest -movflags +faststart -y ${outputPath}`;
-      } else {
-        cmd =
-          `ffmpeg -i ${clipPaths[0]} -i ${voicePath} -c:v copy -c:a aac ` +
-          `-map 0:v:0 -map 1:a:0 -shortest -movflags +faststart -y ${outputPath}`;
-      }
+    if (!hasSubtitles && !hasMultipleClips && hasVoice && !hasMusic) {
+      const cmd = `ffmpeg -i ${clipPaths[0]} -i ${voicePath} -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest -movflags +faststart -y ${outputPath}`;
       await execAsync(cmd, { timeout: 120000 });
       return fs.readFileSync(outputPath);
     }
-
-    const inputs = clipPaths.map(p => `-i ${p}`).join(' ');
-    const voiceIdx = clipPaths.length;
-    const musicIdx = clipPaths.length + 1;
 
     let vFilter = '';
     let videoOutput = 'video';
@@ -353,28 +358,28 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, segme
       videoOutput = 'out';
     }
 
-    if (hasMusic) {
-      const aFilter = `[${voiceIdx}:a]volume=1.0[a1];[${musicIdx}:a]volume=0.12,aloop=loop=-1:size=0[a2];[a1][a2]amix=inputs=2:duration=first[audio]`;
-      const cmd =
-        `ffmpeg ${inputs} -i ${voicePath} -i ${musicPath} ` +
-        `-filter_complex "${vFilter};${aFilter}" ` +
-        `-map "[${videoOutput}]" -map "[audio]" ` +
-        `-c:v libx264 -preset ultrafast -crf 28 -c:a aac ` +
-        `-shortest -movflags +faststart -y ${outputPath}`;
-      await execAsync(cmd, { timeout: 180000 });
+    let aFilter = '';
+    let audioMap = '';
+    if (hasVoice && hasMusic) {
+      aFilter = `[${voiceIdx}:a]volume=1.0[a1];[${musicIdx}:a]volume=0.12,aloop=loop=-1:size=0[a2];[a1][a2]amix=inputs=2:duration=first[audio]`;
+      audioMap = '-map "[audio]"';
+    } else if (hasVoice) {
+      audioMap = `-map ${voiceIdx}:a`;
+    } else if (hasMusic) {
+      aFilter = `[${musicIdx}:a]volume=0.12,aloop=loop=-1:size=0[audio]`;
+      audioMap = '-map "[audio]"';
     } else {
-      const cmd =
-        `ffmpeg ${inputs} -i ${voicePath} ` +
-        `-filter_complex "${vFilter}" ` +
-        `-map "[${videoOutput}]" -map ${voiceIdx}:a ` +
-        `-c:v libx264 -preset ultrafast -crf 28 -c:a aac ` +
-        `-shortest -movflags +faststart -y ${outputPath}`;
-      await execAsync(cmd, { timeout: 180000 });
+      audioMap = '-an';
     }
+
+    const filterPart = aFilter ? `-filter_complex "${vFilter};${aFilter}"` : `-filter_complex "${vFilter}"`;
+    const afilterCli = aFilter ? filterPart : `-filter_complex "${vFilter}"`;
+    const cmd = `ffmpeg ${inputs} ${afilterCli} -map "[${videoOutput}]" ${audioMap} -c:v libx264 -preset ultrafast -crf 28 ${audioMap === '-an' ? '' : '-c:a aac'} -shortest -movflags +faststart -y ${outputPath}`;
+    await execAsync(cmd, { timeout: 180000 });
     return fs.readFileSync(outputPath);
   } finally {
     for (const p of clipPaths) try { fs.unlinkSync(p); } catch {}
-    try { fs.unlinkSync(voicePath); } catch {}
+    if (voicePath) try { fs.unlinkSync(voicePath); } catch {}
     if (musicPath) try { fs.unlinkSync(musicPath); } catch {}
     if (subtitlePath) try { fs.unlinkSync(subtitlePath); } catch {}
     try { fs.unlinkSync(outputPath); } catch {}

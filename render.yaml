@@ -123,6 +123,10 @@ services:
         sync: false
       - key: AZURE_OPENAI_ENDPOINT
         sync: false
+      - key: AZURE_SPEECH_KEY
+        sync: false
+      - key: AZURE_SPEECH_REGION
+        sync: false
       - key: FACEBOOK_ACCESS_TOKEN
         sync: false
       - key: FACEBOOK_PAGE_ID
