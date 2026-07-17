@@ -263,32 +263,113 @@ async function searchBackgroundMusic(topic) {
   return null;
 }
 
-async function composeReelFull(videoBuffer, voiceoverBuffer, musicBuffer) {
-  const videoPath = `${TMP}/reel_${Date.now()}.mp4`;
-  const voicePath = `${TMP}/reel_${Date.now()}.mp3`;
-  const musicPath = `${TMP}/reel_${Date.now()}_bg.mp3`;
-  const outputPath = `${TMP}/reel_${Date.now()}_out.mp4`;
+function findHookText(script) {
+  if (!script || script.length < 5) return '';
+  const sentences = script.split(/\.\.\./g).map(s => s.trim()).filter(Boolean);
+  const first = sentences[0] || script;
+  const clean = first
+    .replace(/^(Did you know|Have you heard|Imagine|Think about|What if|Here.s why|The truth is)[,\s]*/i, '')
+    .replace(/[.!?]$/, '')
+    .trim();
+  if (clean.length < 5 || clean.length > 60) return '';
+  return clean;
+}
+
+async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, hookText) {
+  if (!Array.isArray(videoBuffers)) videoBuffers = [videoBuffers];
+  if (videoBuffers.length === 0) throw new Error('No video buffers');
+  const now = Date.now();
+  const clipPaths = videoBuffers.map((buf, i) => {
+    const p = `${TMP}/clip_${now}_${i}.mp4`;
+    fs.writeFileSync(p, buf);
+    return p;
+  });
+  const voicePath = `${TMP}/voice_${now}.mp3`;
+  fs.writeFileSync(voicePath, voiceoverBuffer);
+  const musicPath = (musicBuffer && musicBuffer.length > 1000)
+    ? (() => { const p = `${TMP}/music_${now}.mp3`; fs.writeFileSync(p, musicBuffer); return p; })()
+    : null;
+  const outputPath = `${TMP}/reel_${now}_out.mp4`;
+
   try {
-    fs.writeFileSync(videoPath, videoBuffer);
-    fs.writeFileSync(voicePath, voiceoverBuffer);
-    let cmd;
-    if (musicBuffer && musicBuffer.length > 1000) {
-      fs.writeFileSync(musicPath, musicBuffer);
-      cmd =
-        `ffmpeg -i ${videoPath} -i ${voicePath} -stream_loop -1 -i ${musicPath} ` +
-        `-filter_complex "[1:a]volume=1.0[a1];[2:a]volume=0.12[a2];[a1][a2]amix=inputs=2:duration=first[audio]" ` +
-        `-c:v copy -map 0:v -map "[audio]" -shortest -movflags +faststart -y ${outputPath}`;
-    } else {
-      cmd =
-        `ffmpeg -i ${videoPath} -i ${voicePath} -c:v copy -c:a aac ` +
-        `-map 0:v:0 -map 1:a:0 -shortest -movflags +faststart -y ${outputPath}`;
+    const hasMultipleClips = clipPaths.length >= 2;
+    const hasMusic = !!musicPath;
+    const hasHook = !!hookText && hookText.length >= 3;
+
+    if (!hasHook && !hasMultipleClips) {
+      // Simple path: voiceover only, no hook, single clip → -c:v copy
+      let cmd;
+      if (hasMusic) {
+        cmd =
+          `ffmpeg -i ${clipPaths[0]} -i ${voicePath} -stream_loop -1 -i ${musicPath} ` +
+          `-filter_complex "[1:a]volume=1.0[a1];[2:a]volume=0.12[a2];[a1][a2]amix=inputs=2:duration=first[audio]" ` +
+          `-c:v copy -map 0:v -map "[audio]" -shortest -movflags +faststart -y ${outputPath}`;
+      } else {
+        cmd =
+          `ffmpeg -i ${clipPaths[0]} -i ${voicePath} -c:v copy -c:a aac ` +
+          `-map 0:v:0 -map 1:a:0 -shortest -movflags +faststart -y ${outputPath}`;
+      }
+      await execAsync(cmd, { timeout: 120000 });
+      return fs.readFileSync(outputPath);
     }
-    await execAsync(cmd, { timeout: 120000 });
+
+    // Complex path: hook text and/or multi-clip → needs re-encode
+    const inputs = clipPaths.map(p => `-i ${p}`).join(' ');
+    const escapedHook = hookText
+      .replace(/'/g, "'\\\\\\''")
+      .replace(/:/g, '\\:')
+      .replace(/'/g, "\\'");
+    const voiceIdx = clipPaths.length;
+    const musicIdx = clipPaths.length + 1;
+
+    let filter = '';
+
+    if (hasMultipleClips) {
+      // Multi-clip with xfade + optional hook
+      if (hasHook) {
+        filter =
+          `[0:v]drawtext=enable='between(t,0,3)':text='${escapedHook}'` +
+          `:fontsize=26:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=8` +
+          `:x=(w-text_w)/2:y=h*0.15[v0];` +
+          `[v0][1:v]xfade=offset=4.5:duration=0.5:transition=fade[video]`;
+      } else {
+        filter =
+          `[0:v]trim=0:4.5,setpts=PTS-STARTPTS[v0];` +
+          `[1:v]trim=0:15,setpts=PTS-STARTPTS[v1];` +
+          `[v0][v1]xfade=offset=4.5:duration=0.5:transition=fade,setpts=PTS-STARTPTS[video]`;
+      }
+    } else {
+      // Single clip with hook
+      filter =
+        `[0:v]drawtext=enable='between(t,0,3)':text='${escapedHook}'` +
+        `:fontsize=26:fontcolor=white:box=1:boxcolor=black@0.5:boxborderw=8` +
+        `:x=(w-text_w)/2:y=h*0.15[video]`;
+    }
+
+    // Audio
+    if (hasMusic) {
+      filter += `;` +
+        `[${voiceIdx}:a]volume=1.0[a1];` +
+        `[${musicIdx}:a]volume=0.12,aloop=1:size=0:loop=-1[a2];` +
+        `[a1][a2]amix=inputs=2:duration=first[audio]`;
+    } else {
+      filter += `;[${voiceIdx}:a]acopy[audio]`;
+    }
+
+    const audioInputs = `-i ${voicePath}${hasMusic ? ` -i ${musicPath}` : ''}`;
+    const cmd =
+      `ffmpeg ${inputs} ${audioInputs} ` +
+      `-filter_complex "${filter}" ` +
+      `-map "[video]" -map "[audio]" ` +
+      `-c:v libx264 -preset ultrafast -crf 28 -c:a aac ` +
+      `-shortest -movflags +faststart -y ${outputPath}`;
+
+    await execAsync(cmd, { timeout: 180000 });
     return fs.readFileSync(outputPath);
   } finally {
-    try { fs.unlinkSync(videoPath); } catch {}
+    for (const p of clipPaths) try { fs.unlinkSync(p); } catch {}
     try { fs.unlinkSync(voicePath); } catch {}
-    try { fs.unlinkSync(musicPath); } catch {}
+    if (musicPath) try { fs.unlinkSync(musicPath); } catch {}
     try { fs.unlinkSync(outputPath); } catch {}
   }
 }
@@ -1260,24 +1341,30 @@ app.post('/api/scheduler/tick', async (req, res) => {
             { headers: { Authorization: config.pexels.key }, signal: AbortSignal.timeout(15000) }
           );
           const pd = await pr.json();
-          const v = pd?.videos
-            ? pd.videos.find(v => v.video_files?.some(f => f.quality === 'hd' && f.width <= 1080))
-            || pd.videos[0]
-            : null;
-          if (!v) {
+          const pexelVideos = (pd?.videos || []).slice(0, 2);
+          if (pexelVideos.length === 0) {
             postResult = { error: 'No stock video found' };
           } else {
-            const vf = v.video_files.find(f => f.quality === 'hd' && f.width <= 1080) || v.video_files[0];
-            const vr = await fetch(vf.link, { signal: AbortSignal.timeout(30000) });
-            const vb = Buffer.from(await vr.arrayBuffer());
-            if (vb.length > 100 * 1024 * 1024) {
-              postResult = { error: 'Video too large (>100MB)' };
+            const vbs = [];
+            for (const pv of pexelVideos) {
+              const vf = pv.video_files.find(f => f.quality === 'hd' && f.width <= 1080) || pv.video_files[0];
+              if (!vf?.link) continue;
+              try {
+                const vr = await fetch(vf.link, { signal: AbortSignal.timeout(30000) });
+                const buf = Buffer.from(await vr.arrayBuffer());
+                if (buf.length <= 100 * 1024 * 1024) vbs.push(buf);
+              } catch {}
+              if (vbs.length >= 2) break;
+            }
+            if (vbs.length === 0) {
+              postResult = { error: 'No videos could be downloaded' };
             } else {
               try {
                 const speechScript = await generateReelScript(topic, caption);
                 const { audioBuffer } = await generateTTSWithPauses(speechScript);
                 const musicBuffer = await searchBackgroundMusic(topic);
-                const finalVideo = await composeReelFull(vb, audioBuffer, musicBuffer);
+                const hookText = findHookText(speechScript);
+                const finalVideo = await composeReelFull(vbs, audioBuffer, musicBuffer, hookText);
                 const fn = `reels/${Date.now()}.mp4`;
                 const vu = await db.uploadToSupabase('media', fn, finalVideo, 'video/mp4');
                 if (!vu) throw new Error('Upload returned empty URL');
@@ -1285,7 +1372,7 @@ app.post('/api/scheduler/tick', async (req, res) => {
               } catch (e) {
                 log('error', 'TTS reel failed, falling back to silent', { error: e.message, rid });
                 const fn = `reels/${Date.now()}.mp4`;
-                const vu = await db.uploadToSupabase('media', fn, vb, 'video/mp4');
+                const vu = await db.uploadToSupabase('media', fn, vbs[0], 'video/mp4');
                 if (!vu) throw new Error('Upload returned empty URL');
                 postResult = await fbVideoPost(vu, caption);
               }
@@ -1346,25 +1433,31 @@ app.post('/api/reel/post', async (req, res) => {
       { headers: { Authorization: config.pexels.key }, signal: AbortSignal.timeout(15000) }
     );
     const pd = await pr.json();
-    const v = pd?.videos
-      ? pd.videos.find(v => v.video_files?.some(f => f.quality === 'hd' && f.width <= 1080))
-        || pd.videos[0]
-      : null;
-    if (!v) {
+    const pexelVideos = (pd?.videos || []).slice(0, 2);
+    if (pexelVideos.length === 0) {
       res.status(404).json({ error: 'No stock video found' });
       return;
     }
-    const vf = v.video_files.find(f => f.quality === 'hd' && f.width <= 1080) || v.video_files[0];
-    const vr = await fetch(vf.link, { signal: AbortSignal.timeout(30000) });
-    const vb = Buffer.from(await vr.arrayBuffer());
-    if (vb.length > 100 * 1024 * 1024) {
-      return res.status(400).json({ error: 'Video too large (>100MB)' });
+    const vbs = [];
+    for (const pv of pexelVideos) {
+      const vf = pv.video_files.find(f => f.quality === 'hd' && f.width <= 1080) || pv.video_files[0];
+      if (!vf?.link) continue;
+      try {
+        const vr = await fetch(vf.link, { signal: AbortSignal.timeout(30000) });
+        const buf = Buffer.from(await vr.arrayBuffer());
+        if (buf.length <= 100 * 1024 * 1024) vbs.push(buf);
+      } catch {}
+      if (vbs.length >= 2) break;
+    }
+    if (vbs.length === 0) {
+      return res.status(400).json({ error: 'No videos could be downloaded' });
     }
     try {
       const speechScript = await generateReelScript(topic, content);
       const { audioBuffer } = await generateTTSWithPauses(speechScript);
       const musicBuffer = await searchBackgroundMusic(topic);
-      const finalVideo = await composeReelFull(vb, audioBuffer, musicBuffer);
+      const hookText = findHookText(speechScript);
+      const finalVideo = await composeReelFull(vbs, audioBuffer, musicBuffer, hookText);
       const fn = `reels/${Date.now()}.mp4`;
       const vu = await db.uploadToSupabase('media', fn, finalVideo, 'video/mp4');
       if (!vu) throw new Error('Upload returned empty URL');
@@ -1372,14 +1465,14 @@ app.post('/api/reel/post', async (req, res) => {
       if (fbRes.id) {
         try { await db.savePost({ content, topic, type: 'reel', status: 'posted', facebook_post_id: fbRes.id }); }
         catch (e) { log('error', 'Reel savePost failed', { error: e.message, rid: req.id }); }
-        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: true, has_music: !!musicBuffer });
+        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: true, has_music: !!musicBuffer, has_hook: !!hookText });
       } else {
         res.json({ error: 'Facebook video error', raw: fbRes, video_url: vu });
       }
     } catch (e) {
       log('error', 'TTS reel failed, falling back to silent', { error: e.message, rid: req.id });
       const fn = `reels/${Date.now()}.mp4`;
-      const vu = await db.uploadToSupabase('media', fn, vb, 'video/mp4');
+      const vu = await db.uploadToSupabase('media', fn, vbs[0], 'video/mp4');
       if (!vu) throw new Error('Upload returned empty URL');
       const fbRes = await fbVideoPost(vu, content);
       if (fbRes.id) {
