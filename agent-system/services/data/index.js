@@ -1480,7 +1480,7 @@ app.post('/api/reel/post', async (req, res) => {
       if (fbRes.id) {
         try { await db.savePost({ content, topic, type: 'reel', status: 'posted', facebook_post_id: fbRes.id }); }
         catch (e) { log('error', 'Reel savePost failed', { error: e.message, rid: req.id }); }
-        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: false });
+        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, has_voiceover: false, debug_error: (e && e.message) || 'unknown' });
       } else {
         res.json({ error: 'Facebook video error', raw: fbRes, video_url: vu });
       }
