@@ -1559,7 +1559,7 @@ async function autoPilotCycle() {
     }
     if (!strategy || !strategy.plan) return;
     const queue = await db.getQueue({ status: 'scheduled', limit: 20 });
-    if (queue.length >= 8) return;
+    if (queue.length >= 3) return;
     const processedTopics = new Set(queue.map(i => i.topic));
     for (const day of strategy.plan.slice(0, 7)) {
       const topic = day.topic
@@ -1590,10 +1590,8 @@ async function autoPilotCycle() {
         log('error', 'Auto-pilot research failed', { topic, error: e.message });
         content = '';
       }
-      const hour = 8 + Math.floor(Math.random() * 12);
-      const sched = new Date();
-      sched.setHours(hour, 0, 0, 0);
-      if (sched <= now) sched.setDate(sched.getDate() + 1);
+      const offsetHours = 4 + day.day * 4 + Math.floor(Math.random() * 3);
+      const sched = new Date(Date.now() + offsetHours * 3600000);
       try {
         await db.addToQueue({
           content, topic, type: day.type || 'post',

@@ -139,3 +139,5 @@ services:
         sync: false
       - key: DAILY_TOKEN_BUDGET
         sync: false
+      - key: FREENEWS_API_KEY
+        sync: false
