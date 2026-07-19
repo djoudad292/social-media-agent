@@ -1039,17 +1039,34 @@ app.post('/api/telegram/webhook', async (req, res) => {
       case '/start':
       case '/help':
         await tgSendMessage(chatId,
-          '*Social Media Engine*\n\n' +
+          '*🤖 Social Media Engine — Full Control*\n\n' +
+          '*📊 Status*\n' +
           '`/status` — System + queue status\n' +
-          '`/queue` — Scheduled items\n' +
-          '`/schedule <topic>` — Schedule a post\n' +
-          '`/post <message>` — Post to Facebook now\n' +
-          '`/generate <topic>` — Generate content via AI\n' +
-          '`/autopilot on|off` — Toggle auto-pilot\n' +
-          '`/pause [hours]` — Pause auto-pilot\n' +
+          '`/health` — Service health check\n' +
           '`/stats` — Queue statistics\n' +
-          '`/cancel <id>` — Remove from queue\n' +
-          '`/scrape` — Fetch latest trends'
+          '`/config` — Show config (no secrets)\n\n' +
+          '*📝 Content*\n' +
+          '`/generate <topic>` — AI generate + schedule post\n' +
+          '`/reel <topic>` — AI generate + post reel NOW\n' +
+          '`/post <message>` — Post raw text to Facebook now\n' +
+          '`/schedule <topic>` — Schedule a post for later\n' +
+          '`/strategy` — View this week\'s strategy\n' +
+          '`/strategize` — Regenerate strategy from trends\n\n' +
+          '*📋 Queue*\n' +
+          '`/queue [status]` — List items (scheduled/posted/all)\n' +
+          '`/item <id>` — View item details\n' +
+          '`/cancel <id>` — Remove item from queue\n' +
+          '`/reschedule <id> <hours>` — Move item to new time\n' +
+          '`/clear` — Remove all failed/empty items\n\n' +
+          '*⚙️ Control*\n' +
+          '`/autopilot on|off` — Toggle auto-pilot engine\n' +
+          '`/pause [hours]` — Pause auto-pilot\n' +
+          '`/tick` — Force process due items NOW\n' +
+          '`/stop` — Emergency: pause + clear queue\n\n' +
+          '*🔍 Tools*\n' +
+          '`/scrape` — Fetch latest trends from web\n' +
+          '`/test` — Run quick end-to-end test\n' +
+          '`/help` — Show this message'
         );
         break;
 
@@ -1214,6 +1231,202 @@ app.post('/api/telegram/webhook', async (req, res) => {
         const d = await r.json();
         const top = (d.trends || []).slice(0, 3).map(t => t.title).join('\n');
         await tgSendMessage(chatId, `Scraped ${d.trends_count || 0} trends.\nTop:\n${top}`);
+        break;
+      }
+
+      case '/health': {
+        const services = ['https://agent-data-1qw0.onrender.com/health'];
+        const lines = [];
+        for (const url of services) {
+          try {
+            const resp = await fetch(url, { signal: AbortSignal.timeout(5000) });
+            const d = await resp.json();
+            lines.push(`✅ data: ${d.ts || 'ok'}`);
+          } catch {
+            lines.push(`❌ data: unreachable`);
+          }
+        }
+        await tgSendMessage(chatId, `*Health*\n${lines.join('\n')}`);
+        break;
+      }
+
+      case '/config': {
+        const safe = {
+          facebook_page_id: config.facebook.pageId,
+          azure_endpoint: config.azure.endpoint ? config.azure.endpoint.replace(/\/\/[^@]+@/, '//***@') : 'not set',
+          azure_model: config.azure.gpt5Mini,
+          speech_region: config.speech.region,
+          services: config.services,
+          daily_token_budget: process.env.DAILY_TOKEN_BUDGET || '20000 (default)',
+        };
+        await tgSendMessage(chatId, `*Config*\n\`\`\`json\n${JSON.stringify(safe, null, 2)}\n\`\`\``);
+        break;
+      }
+
+      case '/reel': {
+        if (!arg) {
+          await tgSendMessage(chatId, 'Usage: `/reel <topic>`');
+          break;
+        }
+        await tgSendMessage(chatId, `*Creating reel about: ${arg}* ⏳\nThis takes ~2-3 minutes...`);
+        try {
+          const resp = await fetch(
+            `http://localhost:${PORT}/api/reel/post`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', 'x-agent-token': config.gatewayToken },
+              body: JSON.stringify({ topic: arg }),
+              signal: AbortSignal.timeout(240000),
+            }
+          );
+          const d = await resp.json();
+          if (d.reel_url) {
+            await tgSendMessage(chatId,
+              `*Reel Posted!* 🎬\nTopic: ${arg}\nVoiceover: ${d.has_voiceover ? '✅' : '❌'}\nMusic: ${d.has_music ? '✅' : '❌'}\nSubtitles: ${d.has_subtitles ? '✅' : '❌'}\n${d.reel_url}`
+            );
+          } else {
+            await tgSendMessage(chatId, `Reel failed: ${d.error || 'unknown error'}`);
+          }
+        } catch (e) {
+          await tgSendMessage(chatId, `Reel error: ${e.message}`);
+        }
+        break;
+      }
+
+      case '/strategy': {
+        const week = getISOWeeks(new Date());
+        const strategy = await db.getStrategy(week).catch(() => null);
+        if (!strategy || !strategy.plan || !strategy.plan.length) {
+          await tgSendMessage(chatId, 'No strategy for this week. Use `/strategize` to generate one.');
+          break;
+        }
+        const lines = strategy.plan.map((d, i) =>
+          `${i + 1}. [${d.type}] ${d.topic}`
+        );
+        for (let i = 0; i < lines.length; i += 10) {
+          await tgSendMessage(chatId, `*Week ${week} Strategy*\n${lines.slice(i, i + 10).join('\n')}`);
+        }
+        break;
+      }
+
+      case '/strategize': {
+        await tgSendMessage(chatId, 'Regenerating strategy from latest trends... ⏳');
+        const fetch = globalThis.fetch || (await import('node-fetch')).default;
+        await fetch(`http://localhost:${PORT}/data/strategy`, {
+          method: 'POST', signal: AbortSignal.timeout(60000),
+          headers: { 'Content-Type': 'application/json' },
+          body: '{}',
+        });
+        const strategy = await db.getStrategy(getISOWeeks(new Date()));
+        const count = strategy?.plan?.length || 0;
+        await tgSendMessage(chatId, `Strategy regenerated! ${count} items planned.\nUse /strategy to view.`);
+        break;
+      }
+
+      case '/item': {
+        if (!arg || isNaN(parseInt(arg, 10))) {
+          await tgSendMessage(chatId, 'Usage: `/item <id>`');
+          break;
+        }
+        const items = await db.getQueue({ limit: 100 }).catch(() => []);
+        const item = items.find(i => i.id === parseInt(arg, 10));
+        if (!item) {
+          await tgSendMessage(chatId, `Item #${arg} not found.`);
+          break;
+        }
+        const preview = (item.content || '(empty)').slice(0, 800);
+        await tgSendMessage(chatId,
+          `*Item #${item.id}*\n` +
+          `Topic: ${item.topic}\n` +
+          `Type: ${item.type}\n` +
+          `Platform: ${item.platform}\n` +
+          `Status: ${item.status}\n` +
+          `Scheduled: ${item.scheduled_for}\n` +
+          `Tone: ${item.tone}\n` +
+          `Retries: ${item.retryCount || 0}\n` +
+          `Content:\n${preview}`
+        );
+        break;
+      }
+
+      case '/reschedule': {
+        const [idStr, hoursStr] = arg.split(/\s+/);
+        const id = parseInt(idStr, 10);
+        const hours = parseFloat(hoursStr) || 1;
+        if (isNaN(id)) {
+          await tgSendMessage(chatId, 'Usage: `/reschedule <id> <hours>`');
+          break;
+        }
+        await db.rescheduleItem(id, hours * 3600000);
+        const future = new Date(Date.now() + hours * 3600000).toISOString();
+        await tgSendMessage(chatId, `Item #${id} rescheduled to ${future.slice(0, 19)} (${hours}h from now).`);
+        break;
+      }
+
+      case '/clear': {
+        const items = await db.getQueue({ limit: 100 }).catch(() => []);
+        let removed = 0;
+        for (const i of items) {
+          if (i.status === 'scheduled' && !i.content && i.topic) {
+            await db.removeFromQueue(i.id).catch(() => {});
+            removed++;
+          }
+        }
+        await tgSendMessage(chatId, `Cleared ${removed} empty/failed items.`);
+        break;
+      }
+
+      case '/tick': {
+        await tgSendMessage(chatId, 'Processing due items... ⏳');
+        const resp = await fetch(
+          `http://localhost:${PORT}/api/scheduler/tick`,
+          { method: 'POST', signal: AbortSignal.timeout(120000) }
+        );
+        const d = await resp.json();
+        const lines = (d.results || []).map(r =>
+          `#${r.id}: ${r.status}${r.post_url ? ' ✅' : ''}${r.error ? ' ❌ ' + JSON.stringify(r.error) : ''}`
+        );
+        await tgSendMessage(chatId,
+          `*Tick Complete*\nProcessed: ${d.processed}\n` +
+          (lines.length ? lines.join('\n') : 'No due items.')
+        );
+        break;
+      }
+
+      case '/stop': {
+        stopAutoPilot();
+        await db.setPauseState(true, null);
+        const all = await db.getQueue({ limit: 100 }).catch(() => []);
+        let cleared = 0;
+        for (const i of all) {
+          if (i.status === 'scheduled') {
+            await db.removeFromQueue(i.id).catch(() => {});
+            cleared++;
+          }
+        }
+        await tgSendMessage(chatId, `*Emergency Stop*\nAuto-pilot paused ❌\n${cleared} scheduled items cleared.`);
+        break;
+      }
+
+      case '/test': {
+        await tgSendMessage(chatId, 'Running end-to-end test... ⏳');
+        try {
+          const fetch = globalThis.fetch || (await import('node-fetch')).default;
+          const s = await fetch(`http://localhost:${PORT}/health`).then(r => r.json());
+          const g = await azure.generateContent('Say "test_ok"', { maxTokens: 10 });
+          const q = await db.queueStats().catch(() => ({}));
+          const hasGpt = g && g.includes('test');
+          await tgSendMessage(chatId,
+            '*E2E Test Results*\n\n' +
+            `✅ Server: ${s.ok ? 'OK' : 'FAIL'}\n` +
+            `✅ GPT: ${hasGpt ? 'OK' : 'RESPONDED'}\n` +
+            `✅ Redis: ${q.scheduled !== undefined ? 'OK' : 'FAIL'}\n` +
+            `✅ Queue: ${q.scheduled || 0} scheduled, ${q.posted || 0} posted\n` +
+            `✅ Auto-pilot: ${autoPilotInterval ? 'ON' : 'OFF'}`
+          );
+        } catch (e) {
+          await tgSendMessage(chatId, `Test failed: ${e.message}`);
+        }
         break;
       }
 
