@@ -202,6 +202,51 @@ async function generateAmbientTrack() {
   return buf;
 }
 
+async function generateAIImage(prompt) {
+  const fetch = globalThis.fetch || (await import('node-fetch')).default;
+  const apiKey = config.azure.apiKey;
+  const endpoint = config.azure.endpoint;
+  if (!apiKey || !endpoint) {
+    log('warn', 'Azure key/endpoint not set, cannot generate image');
+    return null;
+  }
+  try {
+    const deployment = 'dalle-3';
+    const url = `${endpoint}/openai/deployments/${deployment}/images/generations?api-version=2025-01-01-preview`;
+    const body = JSON.stringify({
+      prompt: String(prompt).slice(0, 1000),
+      n: 1,
+      size: '1024x1024',
+      quality: 'standard',
+    });
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'api-key': apiKey },
+      signal: AbortSignal.timeout(60000),
+    });
+    if (!res.ok) {
+      const err = await res.text().catch(() => '');
+      log('warn', 'DALL-E API failed', { status: res.status, error: err.slice(0, 100) });
+      return null;
+    }
+    const data = await res.json();
+    const imgUrl = data?.data?.[0]?.url;
+    if (!imgUrl) {
+      log('warn', 'DALL-E returned no URL');
+      return null;
+    }
+    const imgRes = await fetch(imgUrl, { signal: AbortSignal.timeout(30000) });
+    if (!imgRes.ok) return null;
+    const imgBuf = Buffer.from(await imgRes.arrayBuffer());
+    const fn = `images/${Date.now()}.png`;
+    const uploaded = await db.uploadToSupabase('media', fn, imgBuf, 'image/png');
+    return uploaded || null;
+  } catch (e) {
+    log('warn', 'DALL-E generation failed', { error: e.message });
+    return null;
+  }
+}
+
 async function searchBackgroundMusic(topic) {
   const fetch = globalThis.fetch || (await import('node-fetch')).default;
   if (config.pixabay.key) {
@@ -439,6 +484,41 @@ async function fbVideoPost(fileUrl, description) {
     file_url: fileUrl,
     description: truncate(description, 5000),
   });
+}
+
+async function fbPhotoPost(imageUrl, caption) {
+  await fbRateLimit.acquire();
+  return fbRequest('/me/photos', {
+    access_token: config.facebook.accessToken || '',
+    url: imageUrl,
+    caption: truncate(caption || '', 2000),
+  });
+}
+
+async function fbStoryPost(imageOrVideoUrl, text) {
+  await fbRateLimit.acquire();
+  return fbRequest('/me/stories', {
+    access_token: config.facebook.accessToken || '',
+    file_url: imageOrVideoUrl,
+    message: truncate(text || '', 500),
+  });
+}
+
+async function fbAlbumPost(photos, caption) {
+  await fbRateLimit.acquire();
+  const album = await fbRequest('/me/albums', {
+    access_token: config.facebook.accessToken || '',
+    name: truncate(caption || 'Photo album', 100),
+    message: truncate(caption || '', 2000),
+  });
+  if (!album.id) return album;
+  for (const url of photos) {
+    await fbRequest(`/${album.id}/photos`, {
+      access_token: config.facebook.accessToken || '',
+      url,
+    });
+  }
+  return album;
 }
 
 function getISOWeeks(now = new Date()) {
@@ -1048,6 +1128,9 @@ app.post('/api/telegram/webhook', async (req, res) => {
           '*📝 Content*\n' +
           '`/generate <topic>` — AI generate + schedule post\n' +
           '`/reel <topic>` — AI generate + post reel NOW\n' +
+          '`/photo <desc>` — AI image + caption to Facebook\n' +
+          '`/story <text>` — 24h story post\n' +
+          '`/challenge <topic>` — Interactive challenge post\n' +
           '`/post <message>` — Post raw text to Facebook now\n' +
           '`/schedule <topic>` — Schedule a post for later\n' +
           '`/strategy` — View this week\'s strategy\n' +
@@ -1143,6 +1226,84 @@ app.post('/api/telegram/webhook', async (req, res) => {
         } else {
           const errText = safeStr(fbRes.error) || JSON.stringify(fbRes);
           await tgSendMessage(chatId, `Facebook error: ${errText}`);
+        }
+        break;
+      }
+
+      case '/photo': {
+        if (!arg) {
+          await tgSendMessage(chatId, 'Usage: `/photo <description>`\nGenerates an AI image and posts it.');
+          break;
+        }
+        await tgSendMessage(chatId, `*Generating image: ${arg}* ⏳`);
+        try {
+          const prompt = `A professional, social-media-ready image about: ${arg}. High quality, modern style.`;
+          const imgUrl = await generateAIImage(prompt);
+          if (!imgUrl) throw new Error('Image generation returned empty');
+          const caption = await azure.generateContent(
+            `Write a Facebook caption for an image about: ${arg}. 2-3 sentences. 3-5 hashtags. CTA.`,
+            { maxTokens: 300 }
+          );
+          const fbRes = await fbPhotoPost(imgUrl, caption || arg);
+          if (fbRes.id) {
+            await db.savePost({ content: caption || arg, topic: arg, type: 'photo', status: 'posted', facebook_post_id: fbRes.id });
+            await tgSendMessage(chatId, `*Photo Posted!* 🖼️\nhttps://facebook.com/${fbRes.id}`);
+          } else {
+            await tgSendMessage(chatId, `Facebook error: ${safeStr(fbRes.error) || JSON.stringify(fbRes)}`);
+          }
+        } catch (e) {
+          await tgSendMessage(chatId, `Photo failed: ${e.message}`);
+        }
+        break;
+      }
+
+      case '/story': {
+        if (!arg) {
+          await tgSendMessage(chatId, 'Usage: `/story <text>`\nPosts a text story that lasts 24h.');
+          break;
+        }
+        await tgSendMessage(chatId, `*Posting story...* ⏳`);
+        try {
+          const fbRes = await fbStoryPost('', arg);
+          if (fbRes.id) {
+            await tgSendMessage(chatId, `*Story Posted!* 📖\n24h live.`);
+          } else if (fbRes.error && fbRes.error.includes('stories')) {
+            await tgSendMessage(chatId, `Story API not available (permissions). Posted as regular post instead.`);
+            const fallback = await fbFeedPost(arg);
+            if (fallback.id) await tgSendMessage(chatId, `https://facebook.com/${fallback.id}`);
+          } else {
+            await tgSendMessage(chatId, `Story error: ${safeStr(fbRes.error) || JSON.stringify(fbRes)}`);
+          }
+        } catch (e) {
+          await tgSendMessage(chatId, `Story failed: ${e.message}`);
+        }
+        break;
+      }
+
+      case '/challenge': {
+        if (!arg) {
+          await tgSendMessage(chatId, 'Usage: `/challenge <topic>`\nCreates an interactive challenge post.');
+          break;
+        }
+        await tgSendMessage(chatId, `*Creating challenge: ${arg}* ⏳`);
+        const content = await azure.generateContent(
+          `Create an interactive Facebook challenge post about: ${arg}. ` +
+          `It should invite followers to participate, share results, and tag friends. ` +
+          `Include rules, a hashtag, and a CTA. Keep it fun and engaging. Under 300 words.`,
+          { systemPrompt: 'Community engagement specialist.', maxTokens: 600 }
+        );
+        if (!content) {
+          await tgSendMessage(chatId, 'AI failed to generate challenge content.');
+          break;
+        }
+        const fbRes = await fbFeedPost(content);
+        if (fbRes.id) {
+          await db.savePost({ content, topic: arg, type: 'challenge', status: 'posted', facebook_post_id: fbRes.id });
+          await tgSendMessage(chatId,
+            `*Challenge Posted!* 🏆\nhttps://facebook.com/${fbRes.id}\n\n${content.slice(0, 500)}`
+          );
+        } else {
+          await tgSendMessage(chatId, `Facebook error: ${safeStr(fbRes.error) || JSON.stringify(fbRes)}`);
         }
         break;
       }
