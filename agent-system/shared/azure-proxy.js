@@ -132,10 +132,11 @@ async function generateContent(prompt, options = {}) {
   }
   try {
     const content = await azureChatCompletion(messages, options);
+    if (!content) return '';
     const tokensEstimate = (JSON.stringify(messages).length + (content || '').length) / 4;
     addDailyTokens(Math.round(tokensEstimate));
     setCache(cacheKey, content, Math.round(tokensEstimate));
-    return content || '';
+    return content;
   } catch (e) {
     console.error('[azure] generateContent failed:', e.message);
     return '';
