@@ -2018,14 +2018,9 @@ let tickInterval = null;
 let scrapeInterval = null;
 const AUTOPILOT_INTERVAL = 7200000;
 
-let lastAutoPilotRun = null;
-
 async function autoPilotCycle() {
-  const startedAt = Date.now();
-  const report = { started_at: new Date().toISOString(), steps: [] };
   try {
     const pause = await db.getPauseState();
-    report.steps.push({ step: 'pause', ok: true, paused: pause.paused });
     if (pause.paused) {
       if (!pause.expires_at) return;
       if (new Date(pause.expires_at) > new Date()) return;
@@ -2034,19 +2029,15 @@ async function autoPilotCycle() {
     const fetch = globalThis.fetch || (await import('node-fetch')).default;
     try {
       const r = await fetch(`http://localhost:${PORT}/data/scrape`, { method: 'POST', signal: AbortSignal.timeout(30000) });
-      report.steps.push({ step: 'scrape', ok: r.ok, status: r.status });
       if (!r.ok) log('error', 'Auto-pilot scrape failed', { status: r.status });
     } catch (e) {
-      report.steps.push({ step: 'scrape', ok: false, error: e.message });
       log('error', 'Auto-pilot scrape error', { error: e.message });
     }
     const trending = await db.getLatestTrends(10);
-    report.steps.push({ step: 'trends', count: trending.length });
     const trendTopics = trending.map(t => t.title).filter(Boolean);
     const now = new Date();
     const week = getISOWeeks(now);
     let strategy = await db.getStrategy(week);
-    report.steps.push({ step: 'strategy', exists: !!strategy, plan_len: strategy?.plan?.length, week });
     if (!strategy) {
       const trendContext = trendTopics.length
         ? `\nTrending topics right now:\n${trendTopics.map(t => `- ${t}`).join('\n')}`
@@ -2070,32 +2061,21 @@ async function autoPilotCycle() {
       await db.saveStrategy(week, plan);
       strategy = { plan };
     }
-    if (!strategy || !strategy.plan) {
-      report.steps.push({ step: 'gate', reason: 'no strategy' });
-      lastAutoPilotRun = { ...report, duration_ms: Date.now() - startedAt };
-      return;
-    }
+    if (!strategy || !strategy.plan) return;
     const queue = await db.getQueue({ status: 'scheduled', limit: 20 });
-    report.steps.push({ step: 'gate', queue_length: queue.length });
-    if (queue.length >= 3) {
-      lastAutoPilotRun = { ...report, duration_ms: Date.now() - startedAt };
-      return;
-    }
+    if (queue.length >= 3) return;
     const processedTopics = new Set(queue.map(i => i.topic));
-    let addedCount = 0;
     for (const day of strategy.plan.slice(0, 7)) {
       const topic = day.topic
         || (trendTopics.length ? trendTopics[Math.floor(Math.random() * trendTopics.length)] : 'AI tech');
       if (processedTopics.has(topic)) continue;
       processedTopics.add(topic);
       let content = '';
-      const per = { topic, day: day.day, type: day.type };
       try {
         const nr = await fetch(
           `https://newsapi.org/v2/everything?q=${encodeURIComponent(topic)}&apiKey=${config.freenews.key}&pageSize=3`,
           { signal: AbortSignal.timeout(10000) }
         );
-        per.newsapi_status = nr.status;
         const nd = nr.ok ? await nr.json() : {};
         const articles = (nd?.articles || []).slice(0, 3);
         const sources = articles.map(a => `- ${safeStr(a.title)}`).join('\n');
@@ -2110,9 +2090,7 @@ async function autoPilotCycle() {
             { systemPrompt: 'Write like a human, not AI. Hook first (question/fact), one real insight, 100-160 words, end with a question. 3 hashtags. No fluff.', maxTokens: 600 }
           );
         }
-        per.content_len = (content || '').length;
       } catch (e) {
-        per.error = e.message;
         log('error', 'Auto-pilot research failed', { topic, error: e.message });
         content = '';
       }
@@ -2127,19 +2105,11 @@ async function autoPilotCycle() {
           tone: 'evidence-based',
         });
       } catch (e) {
-        per.add_error = e.message;
         log('error', 'Auto-pilot addToQueue failed', { error: e.message });
       }
-      report.items = report.items || [];
-      report.items.push(per);
-      addedCount++;
     }
-    report.steps.push({ step: 'queued', added: true, added_count: addedCount, items: report.items });
-    lastAutoPilotRun = { ...report, duration_ms: Date.now() - startedAt };
   } catch (e) {
-    report.steps.push({ step: 'error', error: e.message });
     log('error', 'Auto-pilot cycle error', { error: e.message });
-    lastAutoPilotRun = { ...report, duration_ms: Date.now() - startedAt };
   }
 }
 
@@ -2185,59 +2155,12 @@ app.get('/api/debug/azure', async (req, res) => {
     const limit = azure.TOKEN_BUDGET_LIMIT;
     let live = null;
     let error = null;
-    let raw = null;
-    let gc = null;
-    let gcError = null;
     try {
-      live = await azure.azureChatCompletion(
-        [{ role: 'user', content: 'Reply with exactly: OK' }],
-        { maxTokens: 500, debug: true }
-      );
+      live = await azure.generateContent('Reply with exactly: OK', { maxTokens: 500 });
     } catch (e) {
       error = e.message;
     }
-    try {
-      gc = await azure.generateContent('Reply with exactly: GCOK', { maxTokens: 500 });
-    } catch (e) {
-      gcError = e.message;
-    }
-    let rep = null;
-    let repErr = null;
-    try {
-      const prompt = 'Write a casual Facebook post about: Mars colonization robots. Sound like a real person talking to friends: open with a hook (question or surprising fact), share one specific insight or story, keep it short (120-180 words), end with a question to spark replies. 3 hashtags. No clickbait, no emoji spam.';
-      rep = await azure.generateContent(prompt, { maxTokens: 500 });
-      repRaw = azure.getLastRawResponse();
-    } catch (e) {
-      repErr = e.message;
-    }
-    try {
-      const k = config.azure.apiKey;
-      const ep = config.azure.endpoint || 'https://openclaw-ai2-5c86d.openai.azure.com';
-      raw = { keySet: !!k, endpoint: ep, last_response: azure.getLastRawResponse() };
-    } catch {}
-    res.json({ budget: { used, limit, remaining: Math.max(limit - used, 0) }, live_test: { content: live, error, raw }, gc_test: { content: gc, error: gcError }, rep_test: { content: rep, error: repErr, raw: repRaw && { content: repRaw.content, message_keys: repRaw.message_keys, has_choices: repRaw.has_choices, raw: (repRaw.raw || '').slice(0, 800) } } });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
-});
-
-app.get('/api/debug/autopilot', async (req, res) => {
-  try {
-    const week = getISOWeeks(new Date());
-    const [pause, strategy, queue, trends] = await Promise.all([
-      db.getPauseState().catch(() => null),
-      db.getStrategy(week).catch(() => null),
-      db.getQueue({ status: 'scheduled', limit: 20 }).catch(() => []),
-      db.getLatestTrends(10).catch(() => []),
-    ]);
-    res.json({
-      week,
-      paused: pause?.paused,
-      strategy: strategy ? { exists: true, plan_len: strategy.plan?.length } : { exists: false },
-      scheduled_count: queue.length,
-      trend_count: trends.length,
-      last_cycle: lastAutoPilotRun,
-    });
+    res.json({ budget: { used, limit, remaining: Math.max(limit - used, 0) }, live_test: { content: live, error } });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
