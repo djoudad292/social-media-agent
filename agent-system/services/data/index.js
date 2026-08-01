@@ -2155,6 +2155,8 @@ app.get('/api/debug/azure', async (req, res) => {
     let live = null;
     let error = null;
     let raw = null;
+    let gc = null;
+    let gcError = null;
     try {
       live = await azure.azureChatCompletion(
         [{ role: 'user', content: 'Reply with exactly: OK' }],
@@ -2164,11 +2166,16 @@ app.get('/api/debug/azure', async (req, res) => {
       error = e.message;
     }
     try {
+      gc = await azure.generateContent('Reply with exactly: GCOK', { maxTokens: 500 });
+    } catch (e) {
+      gcError = e.message;
+    }
+    try {
       const k = config.azure.apiKey;
       const ep = config.azure.endpoint || 'https://openclaw-ai2-5c86d.openai.azure.com';
       raw = { keySet: !!k, endpoint: ep, last_response: azure.getLastRawResponse() };
     } catch {}
-    res.json({ budget: { used, limit, remaining: Math.max(limit - used, 0) }, live_test: { content: live, error, raw } });
+    res.json({ budget: { used, limit, remaining: Math.max(limit - used, 0) }, live_test: { content: live, error, raw }, gc_test: { content: gc, error: gcError } });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
