@@ -374,25 +374,23 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, segme
     ? (() => { const p = `${TMP}/music_${now}.mp3`; fs.writeFileSync(p, musicBuffer); return p; })()
     : null;
   const outputPath = `${TMP}/reel_${now}_out.mp4`;
+  let audioDur = 0;
+  if (voicePath) {
+    audioDur = await getAudioDuration(voicePath);
+    if (!audioDur || audioDur <= 0) {
+      audioDur = 3 + segments.join(' ').split(' ').length * 0.35;
+    }
+  } else if (Array.isArray(segments) && segments.length > 0) {
+    audioDur = 3 + segments.join(' ').split(' ').length * 0.3;
+  }
   let subtitlePath = null;
-  if (Array.isArray(segments) && segments.length > 0) {
+  if (audioDur > 0 && Array.isArray(segments) && segments.length > 0) {
     try {
-      let audioDur = 0;
-      if (voicePath) {
-        audioDur = await getAudioDuration(voicePath);
-        if (!audioDur || audioDur <= 0) {
-          audioDur = 3 + segments.join(' ').split(' ').length * 0.35;
-        }
-      } else {
-        audioDur = 3 + segments.join(' ').split(' ').length * 0.3;
-      }
-      if (audioDur > 0) {
-        const srt = await generateSRT(segments, audioDur);
-        if (srt) {
-          const p = `${TMP}/subs_${now}.srt`;
-          fs.writeFileSync(p, srt);
-          subtitlePath = p;
-        }
+      const srt = await generateSRT(segments, audioDur);
+      if (srt) {
+        const p = `${TMP}/subs_${now}.srt`;
+        fs.writeFileSync(p, srt);
+        subtitlePath = p;
       }
     } catch (e) {
       log('warn', 'Subtitle generation failed', { error: e.message });
@@ -413,14 +411,9 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, segme
     const hasVoice = voiceIdx >= 0;
     const hasSubtitles = !!subtitlePath;
 
-    if (!hasSubtitles && !hasMultipleClips && hasVoice && !hasMusic) {
-      const cmd = `ffmpeg -i ${clipPaths[0]} -i ${voicePath} -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 -shortest -movflags +faststart -y ${outputPath}`;
-      await execAsync(cmd, { timeout: 120000 });
-      return fs.readFileSync(outputPath);
-    }
-
     let vFilter = '';
     let videoOutput = 'video';
+    let baseVideoDur = 0;
 
     if (hasMultipleClips) {
       let scaleLine = '';
@@ -436,9 +429,28 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, segme
           secondInput = '[clip2s]';
         }
       } catch {}
-      vFilter = `${scaleLine}[0:v]trim=0:4.5,setpts=PTS-STARTPTS,settb=AVTB[v0];${secondInput}trim=0:15,setpts=PTS-STARTPTS,settb=AVTB[clip2];[v0][clip2]xfade=offset=4.5:duration=0.5:transition=fade,setpts=PTS-STARTPTS,settb=AVTB[video]`;
+      const targetDur = hasVoice && audioDur > 0 ? audioDur : 19;
+      const c1 = 4.5;
+      const c2 = Math.max(targetDur - c1 - 0.5, 10);
+      baseVideoDur = c1 + c2;
+      vFilter = `${scaleLine}[0:v]trim=0:${c1},setpts=PTS-STARTPTS,settb=AVTB[v0];${secondInput}trim=0:${c2},setpts=PTS-STARTPTS,settb=AVTB[clip2];[v0][clip2]xfade=offset=${c1}:duration=0.5:transition=fade,setpts=PTS-STARTPTS,settb=AVTB[video]`;
     } else {
-      vFilter = `[0:v]trim=0:30,setpts=PTS-STARTPTS[video]`;
+      let clipDur = 30;
+      try {
+        const dOut = await execAsync(
+          `ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 ${clipPaths[0]}`,
+          { timeout: 5000 }
+        );
+        clipDur = parseFloat(dOut.trim()) || 30;
+      } catch {}
+      baseVideoDur = Math.min(clipDur, 30);
+      vFilter = `[0:v]trim=0:30,setpts=PTS-STARTPTS,settb=AVTB[video]`;
+    }
+
+    const useVoiceLength = hasVoice && audioDur > 0;
+    if (useVoiceLength && audioDur > baseVideoDur + 0.3) {
+      const pad = (audioDur - baseVideoDur).toFixed(2);
+      vFilter += `;[video]tpad=stop_mode=clone:stop_duration=${pad}[video]`;
     }
 
     if (hasSubtitles) {
@@ -462,7 +474,8 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, segme
 
     const filterPart = aFilter ? `-filter_complex "${vFilter};${aFilter}"` : `-filter_complex "${vFilter}"`;
     const afilterCli = aFilter ? filterPart : `-filter_complex "${vFilter}"`;
-    const cmd = `ffmpeg ${inputs} ${afilterCli} -map "[${videoOutput}]" ${audioMap} -c:v libx264 -preset ultrafast -crf 28 ${audioMap === '-an' ? '' : '-c:a aac'} -shortest -movflags +faststart -y ${outputPath}`;
+    const durArg = useVoiceLength ? `-t ${audioDur.toFixed(2)}` : '-shortest';
+    const cmd = `ffmpeg ${inputs} ${afilterCli} -map "[${videoOutput}]" ${audioMap} -c:v libx264 -preset ultrafast -crf 28 ${audioMap === '-an' ? '' : '-c:a aac'} ${durArg} -movflags +faststart -y ${outputPath}`;
     await execAsync(cmd, { timeout: 180000 });
     return fs.readFileSync(outputPath);
   } finally {
