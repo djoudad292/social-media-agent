@@ -2082,17 +2082,20 @@ async function autoPilotCycle() {
       return;
     }
     const processedTopics = new Set(queue.map(i => i.topic));
+    let addedCount = 0;
     for (const day of strategy.plan.slice(0, 7)) {
       const topic = day.topic
         || (trendTopics.length ? trendTopics[Math.floor(Math.random() * trendTopics.length)] : 'AI tech');
       if (processedTopics.has(topic)) continue;
       processedTopics.add(topic);
       let content = '';
+      const per = { topic, day: day.day, type: day.type };
       try {
         const nr = await fetch(
           `https://newsapi.org/v2/everything?q=${encodeURIComponent(topic)}&apiKey=${config.freenews.key}&pageSize=3`,
           { signal: AbortSignal.timeout(10000) }
         );
+        per.newsapi_status = nr.status;
         const nd = nr.ok ? await nr.json() : {};
         const articles = (nd?.articles || []).slice(0, 3);
         const sources = articles.map(a => `- ${safeStr(a.title)}`).join('\n');
@@ -2107,7 +2110,9 @@ async function autoPilotCycle() {
             { systemPrompt: 'Write like a human, not AI. Hook first (question/fact), one real insight, 100-160 words, end with a question. 3 hashtags. No fluff.', maxTokens: 600 }
           );
         }
+        per.content_len = (content || '').length;
       } catch (e) {
+        per.error = e.message;
         log('error', 'Auto-pilot research failed', { topic, error: e.message });
         content = '';
       }
@@ -2121,10 +2126,14 @@ async function autoPilotCycle() {
           tone: 'evidence-based',
         });
       } catch (e) {
+        per.add_error = e.message;
         log('error', 'Auto-pilot addToQueue failed', { error: e.message });
       }
+      report.items = report.items || [];
+      report.items.push(per);
+      addedCount++;
     }
-    report.steps.push({ step: 'queued', added: true, content_empty: false });
+    report.steps.push({ step: 'queued', added: true, added_count: addedCount, items: report.items });
     lastAutoPilotRun = { ...report, duration_ms: Date.now() - startedAt };
   } catch (e) {
     report.steps.push({ step: 'error', error: e.message });
