@@ -425,15 +425,15 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, segme
         );
         const dims = dimOut.trim().split(',').map(Number);
         if (dims.length === 2 && dims[0] > 0 && dims[1] > 0) {
-          scaleLine = `[1:v]scale=w=${dims[0]}:h=${dims[1]}:force_original_aspect_ratio=decrease,pad=${dims[0]}:${dims[1]}:(ow-iw)/2:(oh-ih)/2:color=black[clip2s];`;
+          scaleLine = `[1:v]scale=w=${dims[0]}:h=${dims[1]}:force_original_aspect_ratio=decrease,pad=${dims[0]}:${dims[1]}:(ow-iw)/2:(oh-ih)/2:color=black,fps=30[clip2s];`;
           secondInput = '[clip2s]';
         }
       } catch {}
       const targetDur = hasVoice && audioDur > 0 ? audioDur : 19;
       const c1 = 4.5;
-      const c2 = Math.max(targetDur - c1 - 0.5, 10);
-      baseVideoDur = c1 + c2;
-      vFilter = `${scaleLine}[0:v]trim=0:${c1},setpts=PTS-STARTPTS,settb=AVTB[v0];${secondInput}trim=0:${c2},setpts=PTS-STARTPTS,settb=AVTB[clip2];[v0][clip2]xfade=offset=${c1}:duration=0.5:transition=fade,setpts=PTS-STARTPTS,settb=AVTB[video]`;
+      const c2 = Math.max(targetDur - 4.0, 8);
+      baseVideoDur = 4.0 + c2;
+      vFilter = `${scaleLine}[0:v]trim=0:${c1},fps=30[v0];${secondInput}trim=0:${c2},fps=30[clip2];[v0][clip2]xfade=offset=4.0:duration=0.5:transition=fade,setpts=PTS-STARTPTS[video]`;
     } else {
       let clipDur = 30;
       try {
@@ -444,7 +444,7 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, segme
         clipDur = parseFloat(dOut.trim()) || 30;
       } catch {}
       baseVideoDur = Math.min(clipDur, 30);
-      vFilter = `[0:v]trim=0:30,setpts=PTS-STARTPTS,settb=AVTB[video]`;
+      vFilter = `[0:v]trim=0:30,fps=30[video]`;
     }
 
     const useVoiceLength = hasVoice && audioDur > 0;
