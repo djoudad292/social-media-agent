@@ -2170,12 +2170,21 @@ app.get('/api/debug/azure', async (req, res) => {
     } catch (e) {
       gcError = e.message;
     }
+    let rep = null;
+    let repErr = null;
+    try {
+      const prompt = 'Write a casual Facebook post about: Mars colonization robots. Sound like a real person talking to friends: open with a hook (question or surprising fact), share one specific insight or story, keep it short (120-180 words), end with a question to spark replies. 3 hashtags. No clickbait, no emoji spam.';
+      rep = await azure.generateContent(prompt, { maxTokens: 500 });
+      repRaw = azure.getLastRawResponse();
+    } catch (e) {
+      repErr = e.message;
+    }
     try {
       const k = config.azure.apiKey;
       const ep = config.azure.endpoint || 'https://openclaw-ai2-5c86d.openai.azure.com';
       raw = { keySet: !!k, endpoint: ep, last_response: azure.getLastRawResponse() };
     } catch {}
-    res.json({ budget: { used, limit, remaining: Math.max(limit - used, 0) }, live_test: { content: live, error, raw }, gc_test: { content: gc, error: gcError } });
+    res.json({ budget: { used, limit, remaining: Math.max(limit - used, 0) }, live_test: { content: live, error, raw }, gc_test: { content: gc, error: gcError }, rep_test: { content: rep, error: repErr, raw: repRaw && { content: repRaw.content, message_keys: repRaw.message_keys, has_choices: repRaw.has_choices, raw: (repRaw.raw || '').slice(0, 800) } } });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
