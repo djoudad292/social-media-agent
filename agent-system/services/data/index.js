@@ -2148,6 +2148,23 @@ app.post('/api/autopilot/stop', async (req, res) => {
   }
 });
 
+app.get('/api/debug/azure', async (req, res) => {
+  try {
+    const used = await azure.getDailyTokens();
+    const limit = azure.TOKEN_BUDGET_LIMIT;
+    let live = null;
+    let error = null;
+    try {
+      live = await azure.generateContent('Reply with exactly: OK', { maxTokens: 10 });
+    } catch (e) {
+      error = e.message;
+    }
+    res.json({ budget: { used, limit, remaining: Math.max(limit - used, 0) }, live_test: { content: live, error } });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/autopilot/status', async (req, res) => {
   try {
     const pause = await db.getPauseState();
