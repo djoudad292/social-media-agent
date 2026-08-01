@@ -1176,6 +1176,7 @@ app.post('/api/telegram/webhook', async (req, res) => {
           '`/generate <topic>` — AI generate + schedule post\n' +
           '`/reel <topic>` — AI generate + post reel NOW\n' +
           '`/photo <desc>` — AI image + caption to Facebook\n' +
+          '`/album <topic>` — 3 AI images as a Facebook album\n' +
           '`/story <text>` — 24h story post\n' +
           '`/challenge <topic>` — Interactive challenge post\n' +
           '`/post <message>` — Post raw text to Facebook now\n' +
@@ -1300,6 +1301,44 @@ app.post('/api/telegram/webhook', async (req, res) => {
           }
         } catch (e) {
           await tgSendMessage(chatId, `Photo failed: ${e.message}`);
+        }
+        break;
+      }
+
+      case '/album': {
+        if (!arg) {
+          await tgSendMessage(chatId, 'Usage: `/album <topic>`\nGenerates 3 AI images and posts them as a Facebook album.');
+          break;
+        }
+        await tgSendMessage(chatId, `*Generating album: ${arg}* ⏳\nThis may take a minute (3 images + uploads).`);
+        try {
+          const captions = await azure.generateContent(
+            `Write a Facebook caption for a photo album about: ${arg}. 2-3 sentences. 3-5 hashtags. CTA.`,
+            { maxTokens: 300 }
+          );
+          const photoUrls = [];
+          for (let i = 1; i <= 3; i++) {
+            const prompt = `A professional, social-media-ready image about: ${arg}, variation ${i}. High quality, modern style.`;
+            const url = await generateAIImage(prompt);
+            if (!url) {
+              await tgSendMessage(chatId, `Image ${i}/3 failed to generate.`);
+              continue;
+            }
+            photoUrls.push(url);
+          }
+          if (photoUrls.length === 0) {
+            await tgSendMessage(chatId, `Album failed: no images could be generated.`);
+            break;
+          }
+          const fbRes = await fbAlbumPost(photoUrls, captions || arg);
+          if (fbRes.id) {
+            await db.savePost({ content: captions || arg, topic: arg, type: 'album', status: 'posted', facebook_post_id: fbRes.id });
+            await tgSendMessage(chatId, `*Album Posted!* 🖼️\n${photoUrls.length} photos\nhttps://facebook.com/${fbRes.id}`);
+          } else {
+            await tgSendMessage(chatId, `Facebook error: ${safeStr(fbRes.error) || JSON.stringify(fbRes)}`);
+          }
+        } catch (e) {
+          await tgSendMessage(chatId, `Album failed: ${e.message}`);
         }
         break;
       }
