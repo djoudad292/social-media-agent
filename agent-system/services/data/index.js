@@ -2154,12 +2154,21 @@ app.get('/api/debug/azure', async (req, res) => {
     const limit = azure.TOKEN_BUDGET_LIMIT;
     let live = null;
     let error = null;
+    let raw = null;
     try {
-      live = await azure.generateContent('Reply with exactly: OK', { maxTokens: 10 });
+      live = await azure.azureChatCompletion(
+        [{ role: 'user', content: 'Reply with exactly: OK' }],
+        { maxTokens: 10 }
+      );
     } catch (e) {
       error = e.message;
     }
-    res.json({ budget: { used, limit, remaining: Math.max(limit - used, 0) }, live_test: { content: live, error } });
+    try {
+      const k = config.azure.apiKey;
+      const ep = config.azure.endpoint || 'https://openclaw-ai2-5c86d.openai.azure.com';
+      raw = { keySet: !!k, endpoint: ep };
+    } catch {}
+    res.json({ budget: { used, limit, remaining: Math.max(limit - used, 0) }, live_test: { content: live, error, raw } });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }
