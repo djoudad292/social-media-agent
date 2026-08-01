@@ -211,8 +211,8 @@ async function generateAIImage(prompt) {
     return null;
   }
   try {
-    const deployment = 'dalle-3';
-    const url = `${endpoint}/openai/deployments/${deployment}/images/generations?api-version=2025-01-01-preview`;
+    const deployment = config.azure.dalle || 'dalle-3';
+    const url = `${endpoint}/openai/deployments/${deployment}/images/generations?api-version=${config.azure.apiVersion}`;
     const body = JSON.stringify({
       prompt: String(prompt).slice(0, 1000),
       n: 1,
@@ -226,23 +226,59 @@ async function generateAIImage(prompt) {
     });
     if (!res.ok) {
       const err = await res.text().catch(() => '');
-      log('warn', 'DALL-E API failed', { status: res.status, error: err.slice(0, 100) });
-      return null;
+      log('warn', 'DALL-E API failed', { status: res.status, error: err.slice(0, 150) });
+      return await fallbackStockImage(prompt);
     }
     const data = await res.json();
     const imgUrl = data?.data?.[0]?.url;
     if (!imgUrl) {
       log('warn', 'DALL-E returned no URL');
-      return null;
+      return await fallbackStockImage(prompt);
     }
     const imgRes = await fetch(imgUrl, { signal: AbortSignal.timeout(30000) });
-    if (!imgRes.ok) return null;
+    if (!imgRes.ok) return await fallbackStockImage(prompt);
     const imgBuf = Buffer.from(await imgRes.arrayBuffer());
     const fn = `images/${Date.now()}.png`;
     const uploaded = await db.uploadToSupabase('media', fn, imgBuf, 'image/png');
     return uploaded || null;
   } catch (e) {
     log('warn', 'DALL-E generation failed', { error: e.message });
+    return await fallbackStockImage(prompt);
+  }
+}
+
+async function fallbackStockImage(prompt) {
+  const fetch = globalThis.fetch || (await import('node-fetch')).default;
+  if (!config.pexels.key) {
+    log('warn', 'No PEXELS_API_KEY, cannot fetch stock image');
+    return null;
+  }
+  try {
+    const words = prompt.split(/\s+/).slice(0, 4).join(' ').replace(/[^\w ]/g, '');
+    const q = encodeURIComponent(words || 'technology');
+    const res = await fetch(
+      `https://api.pexels.com/v1/search?query=${q}&per_page=3&size=medium`,
+      { headers: { Authorization: config.pexels.key }, signal: AbortSignal.timeout(15000) }
+    );
+    if (!res.ok) {
+      log('warn', 'Pexels image search failed', { status: res.status });
+      return null;
+    }
+    const data = await res.json();
+    const photo = data?.photos?.[0];
+    if (!photo?.src?.large) {
+      log('warn', 'Pexels returned no photo');
+      return null;
+    }
+    const imgRes = await fetch(photo.src.large, { signal: AbortSignal.timeout(20000) });
+    if (!imgRes.ok) return null;
+    const imgBuf = Buffer.from(await imgRes.arrayBuffer());
+    const fn = `images/${Date.now()}.jpg`;
+    const uploaded = await db.uploadToSupabase('media', fn, imgBuf, 'image/jpeg');
+    if (uploaded) log('info', 'Used stock image fallback', { fn });
+    return uploaded || null;
+  } catch (e) {
+    log('warn', 'Stock image fallback failed', { error: e.message });
     return null;
   }
 }
@@ -341,7 +377,15 @@ async function composeReelFull(videoBuffers, voiceoverBuffer, musicBuffer, segme
   let subtitlePath = null;
   if (Array.isArray(segments) && segments.length > 0) {
     try {
-      const audioDur = voicePath ? await getAudioDuration(voicePath) : 3 + segments.join(' ').split(' ').length * 0.3;
+      let audioDur = 0;
+      if (voicePath) {
+        audioDur = await getAudioDuration(voicePath);
+        if (!audioDur || audioDur <= 0) {
+          audioDur = 3 + segments.join(' ').split(' ').length * 0.35;
+        }
+      } else {
+        audioDur = 3 + segments.join(' ').split(' ').length * 0.3;
+      }
       if (audioDur > 0) {
         const srt = await generateSRT(segments, audioDur);
         if (srt) {
@@ -782,7 +826,10 @@ app.post('/api/content/generate', async (req, res) => {
     const { topic, type, tone } = req.body;
     if (!topic) return res.status(400).json({ error: 'topic required' });
     const prompts = {
-      post: `Write a ${tone || 'casual'} Facebook post about: ${topic}. Under 200 words. 3-5 hashtags + CTA.`,
+      post: `Write a ${tone || 'casual'} Facebook post about: ${topic}. ` +
+        `Sound like a real person talking to friends: open with a hook (question or surprising fact), ` +
+        `share one specific insight or story, keep it short (120-180 words), end with a question to spark replies. ` +
+        `3 hashtags. No clickbait, no emoji spam.`,
       reel: `Write a 15s reel script about: ${topic}. Visual cues + CTA.`,
       thread: `Write 3-5 post thread about: ${topic}.`,
       idea: `Generate 5 content ideas about ${topic} for a tech page.`,
@@ -1315,7 +1362,9 @@ app.post('/api/telegram/webhook', async (req, res) => {
         }
         await tgSendMessage(chatId, `Generating content about: ${arg}...`);
         const content = await azure.generateContent(
-          `Write a social media post about: ${arg}. Under 200 words.`,
+          `Write a Facebook post about: ${arg}. Sound like a real person, not an AI: ` +
+          `hook first (question or surprising fact), one concrete insight, 100-160 words, ` +
+          `end with a question inviting replies. 3 hashtags.`,
           { maxTokens: 500 }
         );
         const item = await db.addToQueue({
@@ -1708,7 +1757,9 @@ app.post('/api/scheduler/tick', async (req, res) => {
         let contentToPost = safeStr(item.content);
         if (!contentToPost && item.topic) {
           contentToPost = await azure.generateContent(
-            `Write a ${item.tone || 'casual'} social media post about: ${item.topic}. Under 200 words.`,
+            `Write a ${item.tone || 'casual'} Facebook post about: ${item.topic}. ` +
+            `Sound human, not robotic: hook first (question or surprising fact), one concrete insight, ` +
+            `100-160 words, end with a question inviting replies. 3 hashtags.`,
             { maxTokens: 500 }
           );
         }
@@ -1752,11 +1803,21 @@ app.post('/api/scheduler/tick', async (req, res) => {
                 if (!vu) throw new Error('Upload returned empty URL');
                 postResult = await fbVideoPost(vu, caption);
               } catch (e) {
-                log('error', 'TTS reel failed, falling back to silent', { error: e.message, rid, topic });
-                const fn = `reels/${Date.now()}.mp4`;
-                const vu = await db.uploadToSupabase('media', fn, vbs[0], 'video/mp4');
-                if (!vu) throw new Error('Upload returned empty URL');
-                postResult = await fbVideoPost(vu, caption);
+                log('error', 'TTS reel failed, falling back to subtitled clip', { error: e.message, rid, topic });
+                try {
+                  const { segments: segs } = await generateTTSWithPauses(speechScript).catch(() => ({ segments: scriptToSegments(speechScript || caption) }));
+                  const finalVideo = await composeReelFull(vbs, null, null, segs);
+                  const fn = `reels/${Date.now()}.mp4`;
+                  const vu = await db.uploadToSupabase('media', fn, finalVideo, 'video/mp4');
+                  if (!vu) throw new Error('Upload returned empty URL');
+                  postResult = await fbVideoPost(vu, caption);
+                } catch (e2) {
+                  log('error', 'Subtitled fallback failed, using raw clip', { error: e2.message, rid, topic });
+                  const fn = `reels/${Date.now()}.mp4`;
+                  const vu = await db.uploadToSupabase('media', fn, vbs[0], 'video/mp4');
+                  if (!vu) throw new Error('Upload returned empty URL');
+                  postResult = await fbVideoPost(vu, caption);
+                }
               }
             }
           }
@@ -1862,17 +1923,34 @@ app.post('/api/reel/post', async (req, res) => {
         res.json({ error: 'Facebook video error', raw: fbRes, video_url: vu });
       }
     } catch (e) {
-      log('error', 'TTS reel failed, falling back to silent', { error: e.message, rid: req.id });
-      const fn = `reels/${Date.now()}.mp4`;
-      const vu = await db.uploadToSupabase('media', fn, vbs[0], 'video/mp4');
-      if (!vu) throw new Error('Upload returned empty URL');
-      const fbRes = await fbVideoPost(vu, content);
-      if (fbRes.id) {
-        try { await db.savePost({ content, topic, type: 'reel', status: 'posted', facebook_post_id: fbRes.id }); }
-        catch (e) { log('error', 'Reel savePost failed', { error: e.message, rid: req.id }); }
-        res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, fallback: 'silent', error: e.message });
-      } else {
-        res.json({ error: 'Facebook video error', raw: fbRes, video_url: vu });
+      log('error', 'TTS reel failed, falling back to subtitled clip', { error: e.message, rid: req.id });
+      try {
+        const segs = scriptToSegments(content || topic);
+        const finalVideo = await composeReelFull(vbs, null, null, segs);
+        const fn = `reels/${Date.now()}.mp4`;
+        const vu = await db.uploadToSupabase('media', fn, finalVideo, 'video/mp4');
+        if (!vu) throw new Error('Upload returned empty URL');
+        const fbRes = await fbVideoPost(vu, content);
+        if (fbRes.id) {
+          try { await db.savePost({ content, topic, type: 'reel', status: 'posted', facebook_post_id: fbRes.id }); }
+          catch (e) { log('error', 'Reel savePost failed', { error: e.message, rid: req.id }); }
+          res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, fallback: 'subtitled', error: e.message });
+        } else {
+          res.json({ error: 'Facebook video error', raw: fbRes, video_url: vu });
+        }
+      } catch (e2) {
+        log('error', 'Subtitled fallback failed, using raw clip', { error: e2.message, rid: req.id });
+        const fn = `reels/${Date.now()}.mp4`;
+        const vu = await db.uploadToSupabase('media', fn, vbs[0], 'video/mp4');
+        if (!vu) throw new Error('Upload returned empty URL');
+        const fbRes = await fbVideoPost(vu, content);
+        if (fbRes.id) {
+          try { await db.savePost({ content, topic, type: 'reel', status: 'posted', facebook_post_id: fbRes.id }); }
+          catch (e) { log('error', 'Reel savePost failed', { error: e.message, rid: req.id }); }
+          res.json({ success: true, reel_url: `https://facebook.com/${fbRes.id}`, caption: content, fallback: 'silent', error: e2.message });
+        } else {
+          res.json({ error: 'Facebook video error', raw: fbRes, video_url: vu });
+        }
       }
     }
   } catch (e) {
@@ -1957,7 +2035,7 @@ async function autoPilotCycle() {
         } else {
           content = await azure.generateContent(
             `Facebook post: ${topic}\nSources:\n${sources}`,
-            { systemPrompt: 'Tech post. 200-400 words. CTA. 3-5 hashtags.', maxTokens: 800 }
+            { systemPrompt: 'Write like a human, not AI. Hook first (question/fact), one real insight, 100-160 words, end with a question. 3 hashtags. No fluff.', maxTokens: 600 }
           );
         }
       } catch (e) {

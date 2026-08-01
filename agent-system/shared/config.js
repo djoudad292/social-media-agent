@@ -30,6 +30,7 @@ const config = {
     endpoint: env('AZURE_OPENAI_ENDPOINT'),
     apiVersion: env('AZURE_OPENAI_API_VERSION', '2025-01-01-preview'),
     gpt5Mini: env('AZURE_GPT5_MINI_DEPLOYMENT', 'gpt-5-mini'),
+    dalle: env('AZURE_DALLE_DEPLOYMENT', 'dalle-3'),
   },
   speech: {
     key: env('AZURE_SPEECH_KEY'),
