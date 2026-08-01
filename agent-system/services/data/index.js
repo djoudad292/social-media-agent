@@ -2018,9 +2018,14 @@ let tickInterval = null;
 let scrapeInterval = null;
 const AUTOPILOT_INTERVAL = 7200000;
 
+let lastAutoPilotRun = null;
+
 async function autoPilotCycle() {
+  const startedAt = Date.now();
+  const report = { started_at: new Date().toISOString(), steps: [] };
   try {
     const pause = await db.getPauseState();
+    report.steps.push({ step: 'pause', ok: true, paused: pause.paused });
     if (pause.paused) {
       if (!pause.expires_at) return;
       if (new Date(pause.expires_at) > new Date()) return;
@@ -2029,15 +2034,19 @@ async function autoPilotCycle() {
     const fetch = globalThis.fetch || (await import('node-fetch')).default;
     try {
       const r = await fetch(`http://localhost:${PORT}/data/scrape`, { method: 'POST', signal: AbortSignal.timeout(30000) });
+      report.steps.push({ step: 'scrape', ok: r.ok, status: r.status });
       if (!r.ok) log('error', 'Auto-pilot scrape failed', { status: r.status });
     } catch (e) {
+      report.steps.push({ step: 'scrape', ok: false, error: e.message });
       log('error', 'Auto-pilot scrape error', { error: e.message });
     }
     const trending = await db.getLatestTrends(10);
+    report.steps.push({ step: 'trends', count: trending.length });
     const trendTopics = trending.map(t => t.title).filter(Boolean);
     const now = new Date();
     const week = getISOWeeks(now);
     let strategy = await db.getStrategy(week);
+    report.steps.push({ step: 'strategy', exists: !!strategy, plan_len: strategy?.plan?.length, week });
     if (!strategy) {
       const trendContext = trendTopics.length
         ? `\nTrending topics right now:\n${trendTopics.map(t => `- ${t}`).join('\n')}`
@@ -2061,9 +2070,17 @@ async function autoPilotCycle() {
       await db.saveStrategy(week, plan);
       strategy = { plan };
     }
-    if (!strategy || !strategy.plan) return;
+    if (!strategy || !strategy.plan) {
+      report.steps.push({ step: 'gate', reason: 'no strategy' });
+      lastAutoPilotRun = { ...report, duration_ms: Date.now() - startedAt };
+      return;
+    }
     const queue = await db.getQueue({ status: 'scheduled', limit: 20 });
-    if (queue.length >= 3) return;
+    report.steps.push({ step: 'gate', queue_length: queue.length });
+    if (queue.length >= 3) {
+      lastAutoPilotRun = { ...report, duration_ms: Date.now() - startedAt };
+      return;
+    }
     const processedTopics = new Set(queue.map(i => i.topic));
     for (const day of strategy.plan.slice(0, 7)) {
       const topic = day.topic
@@ -2094,7 +2111,7 @@ async function autoPilotCycle() {
         log('error', 'Auto-pilot research failed', { topic, error: e.message });
         content = '';
       }
-      const offsetHours = 4 + day.day * 4 + Math.floor(Math.random() * 3);
+      const offsetHours = 4 + (day.day || 1) * 4 + Math.floor(Math.random() * 3);
       const sched = new Date(Date.now() + offsetHours * 3600000);
       try {
         await db.addToQueue({
@@ -2107,8 +2124,12 @@ async function autoPilotCycle() {
         log('error', 'Auto-pilot addToQueue failed', { error: e.message });
       }
     }
+    report.steps.push({ step: 'queued', added: true, content_empty: false });
+    lastAutoPilotRun = { ...report, duration_ms: Date.now() - startedAt };
   } catch (e) {
+    report.steps.push({ step: 'error', error: e.message });
     log('error', 'Auto-pilot cycle error', { error: e.message });
+    lastAutoPilotRun = { ...report, duration_ms: Date.now() - startedAt };
   }
 }
 
@@ -2205,6 +2226,7 @@ app.get('/api/debug/autopilot', async (req, res) => {
       strategy: strategy ? { exists: true, plan_len: strategy.plan?.length } : { exists: false },
       scheduled_count: queue.length,
       trend_count: trends.length,
+      last_cycle: lastAutoPilotRun,
     });
   } catch (e) {
     res.status(500).json({ error: e.message });
