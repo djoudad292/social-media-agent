@@ -65,7 +65,7 @@ function azureChatCompletion(messages, options = {}) {
     const endpoint = config.azure.endpoint || 'https://openclaw-ai2-5c86d.openai.azure.com';
     const model = options.model || config.azure.gpt5Mini || 'gpt-5-mini';
     const apiVersion = config.azure.apiVersion || '2025-01-01-preview';
-    const maxTokens = parseInt(options.maxTokens, 10) || 1024;
+    const maxTokens = parseInt(options.maxTokens, 10) || 1500;
 
     const url = new URL(
       `${endpoint}/openai/deployments/${model}/chat/completions?api-version=${apiVersion}`
@@ -74,6 +74,7 @@ function azureChatCompletion(messages, options = {}) {
       messages,
       max_completion_tokens: maxTokens,
       stream: false,
+      reasoning_effort: options.reasoningEffort || 'low',
     });
     const req = https.request(url, {
       method: 'POST',
