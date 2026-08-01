@@ -1337,13 +1337,14 @@ app.post('/api/telegram/webhook', async (req, res) => {
           } else {
             log('warn', 'Album creation failed, posting photos individually', { error: safeStr(fbRes.error), rid: req.id });
             let posted = 0;
+            const postedIds = [];
             for (const url of photoUrls) {
               const p = await fbPhotoPost(url, captions || arg);
-              if (p.id) { posted++; await tgSendMessage(chatId, `*Photo posted:* 🖼️ https://facebook.com/${p.id}`); }
+              if (p.id) { posted++; postedIds.push(p.id); await tgSendMessage(chatId, `*Photo posted:* 🖼️ https://facebook.com/${p.id}`); }
               else await tgSendMessage(chatId, `Photo error: ${safeStr(p.error) || JSON.stringify(p)}`);
             }
             if (posted > 0) {
-              await db.savePost({ content: captions || arg, topic: arg, type: 'album', status: 'posted', note: `Album failed, ${posted} photos posted individually` });
+              await db.savePost({ content: captions || arg, topic: arg, type: 'album', status: 'posted', note: `Album failed, ${posted} photos posted individually`, facebook_post_id: postedIds.join(',') });
             }
             await tgSendMessage(chatId, posted > 0
               ? `Album unavailable — posted ${posted} photos individually instead.`
