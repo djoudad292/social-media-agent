@@ -6,6 +6,9 @@ const httpAgent = new https.Agent({ keepAlive: true, maxSockets: 5 });
 
 const TOKEN_BUDGET_LIMIT = parseInt(process.env.DAILY_TOKEN_BUDGET, 10) || 20000;
 
+let lastRawResponse = null;
+function getLastRawResponse() { return lastRawResponse; }
+
 async function getDailyTokens() {
   try {
     const rc = r();
@@ -69,7 +72,7 @@ function azureChatCompletion(messages, options = {}) {
     );
     const body = JSON.stringify({
       messages,
-      max_completion_tokens: maxTokens,
+      max_tokens: maxTokens,
       stream: false,
     });
     const req = https.request(url, {
@@ -92,6 +95,10 @@ function azureChatCompletion(messages, options = {}) {
             return;
           }
           const content = p.choices?.[0]?.message?.content;
+          lastRawResponse = { ts: Date.now(), content, has_choices: !!p.choices?.length, choice_keys: p.choices?.[0] ? Object.keys(p.choices[0]) : [], message_keys: p.choices?.[0]?.message ? Object.keys(p.choices[0].message) : [], raw: data.slice(0, 2000) };
+          if (!content && options.debug) {
+            console.error('[azure] empty content, raw response:', data.slice(0, 2000));
+          }
           resolve(content || '');
         } catch (e) {
           reject(new Error(`Azure parse error: ${e.message}`));
@@ -143,4 +150,4 @@ async function generateContent(prompt, options = {}) {
   }
 }
 
-module.exports = { azureChatCompletion, generateContent, getDailyTokens, TOKEN_BUDGET_LIMIT };
+module.exports = { azureChatCompletion, generateContent, getDailyTokens, TOKEN_BUDGET_LIMIT, getLastRawResponse };
