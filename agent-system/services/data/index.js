@@ -1335,7 +1335,19 @@ app.post('/api/telegram/webhook', async (req, res) => {
             await db.savePost({ content: captions || arg, topic: arg, type: 'album', status: 'posted', facebook_post_id: fbRes.id });
             await tgSendMessage(chatId, `*Album Posted!* 🖼️\n${photoUrls.length} photos\nhttps://facebook.com/${fbRes.id}`);
           } else {
-            await tgSendMessage(chatId, `Facebook error: ${safeStr(fbRes.error) || JSON.stringify(fbRes)}`);
+            log('warn', 'Album creation failed, posting photos individually', { error: safeStr(fbRes.error), rid: req.id });
+            let posted = 0;
+            for (const url of photoUrls) {
+              const p = await fbPhotoPost(url, captions || arg);
+              if (p.id) { posted++; await tgSendMessage(chatId, `*Photo posted:* 🖼️ https://facebook.com/${p.id}`); }
+              else await tgSendMessage(chatId, `Photo error: ${safeStr(p.error) || JSON.stringify(p)}`);
+            }
+            if (posted > 0) {
+              await db.savePost({ content: captions || arg, topic: arg, type: 'album', status: 'posted', note: `Album failed, ${posted} photos posted individually` });
+            }
+            await tgSendMessage(chatId, posted > 0
+              ? `Album unavailable — posted ${posted} photos individually instead.`
+              : `Album failed: ${safeStr(fbRes.error) || JSON.stringify(fbRes)}`);
           }
         } catch (e) {
           await tgSendMessage(chatId, `Album failed: ${e.message}`);
