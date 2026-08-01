@@ -72,7 +72,7 @@ function azureChatCompletion(messages, options = {}) {
     );
     const body = JSON.stringify({
       messages,
-      max_tokens: maxTokens,
+      max_completion_tokens: maxTokens,
       stream: false,
     });
     const req = https.request(url, {
