@@ -2116,7 +2116,8 @@ async function autoPilotCycle() {
         log('error', 'Auto-pilot research failed', { topic, error: e.message });
         content = '';
       }
-      const offsetHours = 4 + (day.day || 1) * 4 + Math.floor(Math.random() * 3);
+      const dayNum = parseInt(String(day.day).replace(/\D/g, ''), 10) || 1;
+      const offsetHours = 4 + dayNum * 4 + Math.floor(Math.random() * 3);
       const sched = new Date(Date.now() + offsetHours * 3600000);
       try {
         await db.addToQueue({
