@@ -2190,6 +2190,27 @@ app.get('/api/debug/azure', async (req, res) => {
   }
 });
 
+app.get('/api/debug/autopilot', async (req, res) => {
+  try {
+    const week = getISOWeeks(new Date());
+    const [pause, strategy, queue, trends] = await Promise.all([
+      db.getPauseState().catch(() => null),
+      db.getStrategy(week).catch(() => null),
+      db.getQueue({ status: 'scheduled', limit: 20 }).catch(() => []),
+      db.getLatestTrends(10).catch(() => []),
+    ]);
+    res.json({
+      week,
+      paused: pause?.paused,
+      strategy: strategy ? { exists: true, plan_len: strategy.plan?.length } : { exists: false },
+      scheduled_count: queue.length,
+      trend_count: trends.length,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.get('/api/autopilot/status', async (req, res) => {
   try {
     const pause = await db.getPauseState();
